@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+
+        <record id="view_sale_integration_form" model="ir.ui.view">
+            <field name="name">sale.integration.form</field>
+            <field name="model">sale.integration</field>
+            <field name="inherit_id" ref="integration.view_sale_integration_form" />
+            <field name="arch" type="xml">
+                <field name="is_import_dynamic_attribute" position="after">
+                    <field name="delivery_time" attrs="{'invisible': [('type_api', '!=', 'prestashop')]}" />
+                    <field name="product_delivery_in_stock" attrs="{'invisible': ['|', ('type_api', '!=', 'prestashop'), ('delivery_time', '!=', 'specific')], 'required': [('delivery_time', '=', 'specific')]}" />
+                    <field name="message_template_in_stock" attrs="{'invisible': ['|', ('type_api', '!=', 'prestashop'), ('delivery_time', '!=', 'specific')], 'required': [('delivery_time', '=', 'specific')]}" />
+                    <field name="product_delivery_out_of_stock" attrs="{'invisible': ['|', ('type_api', '!=', 'prestashop'), ('delivery_time', '!=', 'specific')], 'required': [('delivery_time', '=', 'specific')]}" />
+                    <field name="message_template_out_of_stock" attrs="{'invisible': ['|', ('type_api', '!=', 'prestashop'), ('delivery_time', '!=', 'specific')], 'required': [('delivery_time', '=', 'specific')]}" />
+                </field>
+                <group name="product_synchronization_settings" position="after">
+                    <group name="category_and_inventory_settings" string="Category and Inventory Settings" attrs="{'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')]}">
+                        <field name="import_inactive_categories" groups="base.group_no_one" attrs="{'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')]}" widget="boolean_toggle"/>
+                    </group>
+                </group>
+                <page name="customer_default_page" position="inside">
+                    <group>
+                        <group>
+                            <field name="subscribed_to_newsletter_id" attrs="{'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')]}"/>
+                            <field name="newsletter_registration_date_id" attrs="{'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')]}"/>
+                            <field name="customer_registration_date_id" attrs="{'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')]}"/>
+                            <field name="additional_address_information" attrs="{'invisible': ['|', ('id', '=', False), ('type_api', '!=', 'prestashop')]}"/>
+                        </group>
+                    </group>
+                </page>
+            </field>
+        </record>
+    </data>
+</odoo>

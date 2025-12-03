@@ -1,0 +1,11 @@
+.o_IntegrationStatusMenu_dropdownMenu {
+    &:not(.o-isDeviceSmall) {
+        width: 300px;
+        max-height: Min(calc(100vh - 140px), 630px);
+        padding: 5px;
+    }
+
+    &.o-isDeviceSmall {
+        max-height: none;
+    }
+}

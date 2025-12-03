@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+
+        <record id="integration_product_public_category_external_view_tree_inherit_presta" model="ir.ui.view">
+            <field name="name">integration.product.public.category.external.view.tree.inherit.presta</field>
+            <field name="model">integration.product.public.category.external</field>
+            <field name="inherit_id" ref="integration.integration_product_public_category_external_view_tree"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='name']/." position="after">
+                    <field name="type_api" invisible="1"/>
+                    <field name="auto_export" attrs="{'invisible': [('type_api', '!=', 'prestashop')]}" widget="boolean_toggle"/>
+                </xpath>
+            </field>
+        </record>
+
+    </data>
+</odoo>

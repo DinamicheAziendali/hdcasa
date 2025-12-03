@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="integration.SaleIntegrationFormControlPanel" t-inherit="web.FormControlPanel" t-inherit-mode="primary" owl="1">
+        <xpath expr="//div[hasclass('o_cp_bottom_right')]" position="inside">
+            <a href="https://support.ventor.tech/" class="btn btn-outline-success text-uppercase" target="_blank">Documentation &amp; Support</a>
+        </xpath>
+    </t>
+
+</templates>

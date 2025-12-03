@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="inherit_view_amazon_process_import_export_ept" model="ir.ui.view">
+        <field name="name">Process Import/Export</field>
+        <field name="model">amazon.process.import.export</field>
+        <field name="inherit_id" ref="amazon_ept.view_amazon_process_import_export_ept"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='instance_id']" position="attributes">
+                <attribute name="attrs">
+                    {'invisible':[('fba_operations','not in',('Create_Inbound_Shipment_Plan','Import Inbound Shipment')),
+                    ('both_operations','not in', ('create_settlement_report','Sync_Active_Products'))],
+                    'required':['|',('fba_operations','in',('Create_Inbound_Shipment_Plan','Import Inbound Shipment')),
+                    ('both_operations','in',('Sync_Active_Products', 'create_settlement_report'))]}
+                </attribute>
+            </xpath>
+            <xpath expr="//form/group[3]/p/b" position="inside">
+                <h5 style="color:#7D5A29; font-weight:bold"
+                    attrs="{'invisible': [('both_operations','!=','create_settlement_report')]}">
+                    <ol>
+                        <li>The File must be in Tab separated .csv format.</li>
+                        <li>We only use Flat File V2 Settlement Report format,
+                            There might be a mismatch in the settlement if the report format does not match.
+                        </li>
+                    </ol>
+                </h5>
+            </xpath>
+
+
+            <xpath expr="//form/group[4]/group[5]" position="after">
+                <group string="Manually Create Settlement Report"
+                       attrs="{'invisible':[('both_operations','!=','create_settlement_report')]}">
+                        <field name="choose_file" widget="binary" string="File Upload"
+                               filename="file_name"
+                               placeholder="File Upload"/>
+                        <field name="file_name" string="File Name" invisible="1"/>
+                </group>
+
+            </xpath>
+        </field>
+    </record>
+</odoo>

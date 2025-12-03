@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="integration.SaleIntegrationListView.Buttons" t-inherit="web.ListView.Buttons" t-inherit-mode="primary" owl="1">
+        <xpath expr="//div[hasclass('o_list_buttons')]" position="inside">
+            <a href="https://support.ventor.tech/" class="btn btn-outline-success text-uppercase mx-3" target="_blank">Documentation &amp; Support</a>
+        </xpath>
+    </t>
+
+</templates>

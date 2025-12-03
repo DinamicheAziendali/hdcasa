@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+        <record id="view_configuration_wizard" model="ir.ui.view">
+            <field name="name">configuration.wizard.prestashop.form</field>
+            <field name="model">configuration.wizard.prestashop</field>
+            <field name="inherit_id" ref="integration.view_configuration_wizard" />
+            <field name="arch" type="xml">
+                <xpath expr="//sheet" position="inside">
+                    <group name="step_url" states="step_url">
+                        <field name="url" widget="url"/>
+                        <field name="admin_url" widget="url"/>
+                        <field name="key" />
+                    </group>
+                    <div name="step_tax_group" states="step_tax_group">
+                        <div class="alert alert-info" role="alert">
+                            There is a difference between Prestashop and Odoo taxes definition on the product.
+                            On Prestashop you define "Tax Rule" for the product. While in Odoo you define "Customer Tax"
+                            on the product. So if we want to export Product from Odoo to Prestashop we need to take
+                            "Customer Tax" from Odoo product and convert it to "Tax Rule" that is understandable by Prestashop.
+                            Or if we want to import product from Prestashop to Odoo , we need to take "Tax Rule" defined
+                            in Prestashop Product and convert it to "Customer Tax".
+                            <br/>
+                            This mapping allows to define both Default Tax that will be used when importing product from Prestashop
+                            to Odoo. And also define which taxes are corresponding to which Tax Rule (that is needed when we
+                            exporting from Odoo to Prestashop)
+                            <br/>
+                            <br/>
+                            Note that you can drag&amp;drop tax groups to define their priority. First in the list will be used first.
+                            That is important when exporting products from Odoo to Prestashop. In case multiple tax rules found for the selected tax,
+                            connector will use tax rule with the highest priority
+                        </div>
+                        <field name="configuration_tax_group_ids" nolabel="1">
+                            <tree editable="bottom" create="0" delete="0">
+                                <field name="sequence" widget="handle"/>
+                                <field name="external_tax_group_id"/>
+                                <field name="external_tax_ids"
+                                       widget="many2many_tags"
+                                />
+                                <field name="default_external_tax_id" domain="[('id', 'in', external_tax_ids)]"/>
+                            </tree>
+                        </field>
+                    </div>
+                    <group name="step_order_status" states="step_order_status">
+                        <field name="order_status_ids" widget="many2many_tags" options="{'no_create': True}"/>
+                        <field name="run_action_on_cancel_so" />
+                        <field name="sub_status_cancel_id" attrs="{'required' : [('run_action_on_cancel_so', '=', True)]}"/>
+                        <field name="run_action_on_shipping_so" />
+                        <field name="sub_status_shipped_id" attrs="{'required' : [('run_action_on_shipping_so', '=', True)]}"/>
+                        <field name="run_action_on_so_invoice_status" />
+                        <field name="sub_status_paid_id" attrs="{'required' : [('run_action_on_so_invoice_status', '=', True)]}"/>
+                    </group>
+                    <group name="step_api" states="step_api">
+                        <div colspan="2">
+                            <field name="configuration_api_ids" readonly="1">
+                                <tree>
+                                    <field name="resource_name"/>
+                                    <field name="method_get" widget="badge" decoration-success="method_get == 'yes'" decoration-danger="method_get == 'no'"/>
+                                    <field name="method_put" widget="badge" decoration-success="method_put == 'yes'" decoration-danger="method_put == 'no'"/>
+                                    <field name="method_post" widget="badge" decoration-success="method_post == 'yes'" decoration-danger="method_post == 'no'"/>
+                                    <field name="method_delete" widget="badge" decoration-success="method_delete == 'yes'" decoration-danger="method_delete == 'no'"/>
+                                    <field name="method_required" widget="badge" decoration-success="method_required == 'yes'" decoration-danger="method_required == 'no'"/>
+                                </tree>
+                            </field>
+                        </div>
+                        <button name="action_recheck_api" string="Recheck" type="object"/>
+                    </group>
+                </xpath>
+            </field>
+        </record>
+    </data>
+</odoo>

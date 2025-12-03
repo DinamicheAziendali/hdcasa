@@ -1,0 +1,19 @@
+.o_integration_kanban {
+    --KanbanRecord-width: 500px;
+    --KanbanRecord-width-small: 400px;
+}
+
+.o_integration_kanban {
+    h2 {
+        font-size: 2rem;
+    }
+
+    .hoverable-card {
+        // We add white border to avoid the card to move when the border is added on hover
+        border: 1px solid #FFFFFF;
+    }
+
+    .hoverable-card:hover {
+        border: 1px solid #C9CCD2;
+    }
+}

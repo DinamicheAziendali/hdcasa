@@ -1,0 +1,4 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_configuration_wizard_prestashop,access_configuration_wizard_prestashop,model_configuration_wizard_prestashop,,1,1,1,1
+access_configuration_wizard_prestashop_api,access_configuration_wizard_prestashop_api,model_configuration_wizard_prestashop_api,,1,1,1,1
+access_configuration_wizard_prestashop_tax_group,configuration.wizard.prestashop.tax.group,model_configuration_wizard_prestashop_tax_group,,1,1,1,1

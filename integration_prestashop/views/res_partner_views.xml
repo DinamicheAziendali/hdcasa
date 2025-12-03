@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<odoo>
+
+    <record id="view_partner_form_inherit2" model="ir.ui.view">
+        <field name="name">res.partner.form.inherit2</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="integration.view_partner_form_inherit"/>
+        <field name="arch" type="xml">
+            <xpath expr="//page[@name='partner_integration']" position="inside">
+                <group>
+                    <field name="subscribed_to_newsletter_presta"/>
+                    <field name="newsletter_registration_date_presta"/>
+                    <field name="customer_registration_date_presta"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>
