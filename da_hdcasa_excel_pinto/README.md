@@ -1,0 +1,1 @@
+Modulo di Stampa in Excel personalizzato per HdCasa. Stampa un dettaglio picking e righe picking 
