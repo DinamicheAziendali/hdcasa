@@ -2,10 +2,13 @@
 <odoo>
     <record id="delivery_multi_destination_copy_record_tree" model="ir.ui.view">
         <field name="model">delivery.carrier</field>
-        <field name="inherit_id" ref="delivery_multi_destination.view_delivery_carrier_list" />
+        <field
+            name="inherit_id"
+            ref="delivery_multi_destination.view_delivery_carrier_list"
+        />
         <field name="arch" type="xml">
             <field name="destination_type" position="after">
-                <button name="copy" type="object" string="Duplica"/>
+                <button name="copy" type="object" string="Duplica" />
             </field>
         </field>
     </record>

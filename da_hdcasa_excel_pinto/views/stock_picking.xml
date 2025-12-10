@@ -1,15 +1,17 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8" ?>
 <odoo>
-
     <record id="stock_picking_transport_carrier_search_view_inherit" model="ir.ui.view">
         <field name="name">stock.picking.carrier.search</field>
         <field name="model">stock.picking</field>
-        <field name="inherit_id" ref="stock.view_picking_internal_search"/>
+        <field name="inherit_id" ref="stock.view_picking_internal_search" />
         <field name="arch" type="xml">
             <filter name="backorder" position="after">
-                <separator/>
-                <filter name="exported_pinto" string="Esportato per Pinto"
-                        domain="[('exported_pinto', '=', True)]"/>
+                <separator />
+                <filter
+                    name="exported_pinto"
+                    string="Esportato per Pinto"
+                    domain="[('exported_pinto', '=', True)]"
+                />
             </filter>
         </field>
     </record>
@@ -17,10 +19,10 @@
     <record id="stock_picking_exported_pinto_form_view" model="ir.ui.view">
         <field name="name">stock.picking.exported_pinto.form.view</field>
         <field name="model">stock.picking</field>
-        <field name="inherit_id" ref="stock.view_picking_form"/>
+        <field name="inherit_id" ref="stock.view_picking_form" />
         <field name="arch" type="xml">
             <field name="origin" position="after">
-                <field name="exported_pinto"/>
+                <field name="exported_pinto" />
             </field>
         </field>
     </record>
@@ -28,12 +30,11 @@
     <record id="stock_picking_exported_pinto_tree_view" model="ir.ui.view">
         <field name="name">stock.picking.exported_pinto.tree.view</field>
         <field name="model">stock.picking</field>
-        <field name="inherit_id" ref="stock.vpicktree"/>
+        <field name="inherit_id" ref="stock.vpicktree" />
         <field name="arch" type="xml">
             <field name="state" position="before">
-                <field name="exported_pinto" optional="hide"/>
+                <field name="exported_pinto" optional="hide" />
             </field>
         </field>
     </record>
-
 </odoo>

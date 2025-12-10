@@ -1,25 +1,29 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8" ?>
 <odoo>
-
-    <template id="report_invoice_document_inherit" inherit_id="account.report_invoice_document">
-<!--        <xpath expr="//div[@id='informations']" position="inside">-->
-<!--            <div class="col-auto col-3 mw-100 mb-2" t-if="o.invoice_payment_term_id" name="payment_term">-->
-<!--                <strong>Payment Term:</strong>-->
-<!--                <p class="m-0" t-field="o.invoice_payment_term_id.note" />-->
-<!--            </div>-->
-<!--        </xpath>-->
-        <xpath expr="//t[@t-if='o.partner_shipping_id and (o.partner_shipping_id != o.partner_id)']" position="attributes">
+    <template
+        id="report_invoice_document_inherit"
+        inherit_id="account.report_invoice_document"
+    >
+        <!--        <xpath expr="//div[@id='informations']" position="inside">-->
+        <!--            <div class="col-auto col-3 mw-100 mb-2" t-if="o.invoice_payment_term_id" name="payment_term">-->
+        <!--                <strong>Payment Term:</strong>-->
+        <!--                <p class="m-0" t-field="o.invoice_payment_term_id.note" />-->
+        <!--            </div>-->
+        <!--        </xpath>-->
+        <xpath
+            expr="//t[@t-if='o.partner_shipping_id and (o.partner_shipping_id != o.partner_id)']"
+            position="attributes"
+        >
             <attribute name="t-if">o.partner_shipping_id</attribute>
         </xpath>
         <xpath expr="//div[@name='comment']" position="before">
             <t id="bank" t-if="o.partner_bank_id">
-                <strong>Payment details</strong> <br/>
+                <strong>Payment details</strong> <br />
                 <t t-if="o.partner_bank_id.bank_id">
-                    Bank:  <t t-esc="o.partner_bank_id.bank_id.name" /> <br/>
+                    Bank:  <t t-esc="o.partner_bank_id.bank_id.name" /> <br />
                 </t>
                 Account Number:  <t t-esc="o.partner_bank_id.acc_number" />
             </t>
         </xpath>
     </template>
-
 </odoo>

@@ -1,9 +1,13 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8" ?>
 <odoo>
-
-    <template id="report_purchaseorder_document_inherit" inherit_id="purchase.report_purchaseorder_document">
+    <template
+        id="report_purchaseorder_document_inherit"
+        inherit_id="purchase.report_purchaseorder_document"
+    >
         <xpath expr="//table/thead/tr/th[@name='th_description']" position="before">
-            <th name="th_code"><strong>Vendor Code</strong></th>
+            <th name="th_code">
+                <strong>Vendor Code</strong>
+            </th>
         </xpath>
         <xpath expr="//table/tbody/t/tr/t/td[@id='product']" position="before">
             <td id="code">
@@ -11,5 +15,4 @@
             </td>
         </xpath>
     </template>
-
 </odoo>

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8" ?>
 <odoo>
     <record id="report_xlsx_pinto" model="ir.actions.report">
         <field name="name">Export per Pinto</field>
@@ -7,7 +7,7 @@
         <field name="report_name">da_hdcasa_excel_pinto.report_xlsx_pinto</field>
         <field name="report_file">da_hdcasa_excel_pinto.report_xlsx_pinto</field>
         <field name="print_report_name">('Pinto - ' + object.name)</field>
-        <field name="binding_model_id" ref="stock.model_stock_picking"/>
+        <field name="binding_model_id" ref="stock.model_stock_picking" />
         <field name="binding_type">report</field>
     </record>
 </odoo>

@@ -15,13 +15,19 @@
                     <Descrizione t-out="encode_for_export(tax_description, 1000)" />
                     <Quantita>1.00</Quantita>
                     <UnitaMisura>Units</UnitaMisura>
-                    <PrezzoUnitario t-out="format_monetary(oss_tax_data['Imposta'], euro)" />
-                    <PrezzoTotale t-out="format_monetary(oss_tax_data['Imposta'], euro)" />
+                    <PrezzoUnitario
+                        t-out="format_monetary(oss_tax_data['Imposta'], euro)"
+                    />
+                    <PrezzoTotale
+                        t-out="format_monetary(oss_tax_data['Imposta'], euro)"
+                    />
                     <AliquotaIVA>0.00</AliquotaIVA>
                     <Natura>N2.2</Natura>
                     <AltriDatiGestionali>
                         <TipoDato>OSS</TipoDato>
-                        <RiferimentoTesto t-out="encode_for_export(tax_description, 1000)" />
+                        <RiferimentoTesto
+                            t-out="encode_for_export(tax_description, 1000)"
+                        />
                     </AltriDatiGestionali>
                 </DettaglioLinee>
             </t>
@@ -35,10 +41,14 @@
                 <DatiRiepilogo t-if="oss_tax_data.get('Oss Country', False)">
                     <AliquotaIVA>0.00</AliquotaIVA>
                     <Natura>N2.2</Natura>
-                    <ImponibileImporto t-out="format_monetary(oss_tax_data['Imposta'], euro)" />
+                    <ImponibileImporto
+                        t-out="format_monetary(oss_tax_data['Imposta'], euro)"
+                    />
                     <Imposta>0.00</Imposta>
-                    <RiferimentoNormativo t-out="encode_for_export(tax_description, 100)" />
-               </DatiRiepilogo>
+                    <RiferimentoNormativo
+                        t-out="encode_for_export(tax_description, 100)"
+                    />
+                </DatiRiepilogo>
             </t>
         </xpath>
     </template>
@@ -47,8 +57,13 @@
         id="l10n_it_edi_oss_line_it_inherit"
         inherit_id="l10n_it_edi.account_invoice_line_it_FatturaPA"
     >
-        <xpath expr="//RiferimentoTesto[@t-out='format_alphanumeric(altri_dati_gestionali['riferimento_testo'])']" position="attributes">
-            <attribute name="t-out">'IVA OSS ' + str(format_numbers(tax_ids.amount)) + '&#37; ' + str(tax_ids.oss_country_id.name)</attribute>
+        <xpath
+            expr="//RiferimentoTesto[@t-out='format_alphanumeric(altri_dati_gestionali['riferimento_testo'])']"
+            position="attributes"
+        >
+            <attribute
+                name="t-out"
+            >'IVA OSS ' + str(format_numbers(tax_ids.amount)) + '&#37; ' + str(tax_ids.oss_country_id.name)</attribute>
         </xpath>
     </template>
 </odoo>
