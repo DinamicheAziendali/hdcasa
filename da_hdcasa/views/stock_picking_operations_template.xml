@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <template id="report_picking_inherit" inherit_id="stock.report_picking">
+        <xpath expr="//table/thead/tr/th[@name='th_product']" position="before">
+            <th name="th_code">
+                <strong>Vendor Code</strong>
+            </th>
+        </xpath>
+        <xpath expr="//table/tbody/tr/td[1]" position="before">
+            <td id="code">
+                <span t-esc="ml.product_id._get_vendor_code()"/>
+            </td>
+        </xpath>
+        <xpath expr="//table/tbody/tr/td/span[@t-field='ml.product_uom_id']" position="attributes">
+            <attribute name="style">display: none;</attribute>
+        </xpath>
+        <xpath expr="//div[@name='div_outgoing_address']/div/div" position="attributes">
+            <attribute name="style">visibility: hidden;</attribute>
+        </xpath>
+        <xpath expr="//div[@name='div_outgoing_address']/div/div" position="before">
+            <t t-set="partner_dest" t-value="o.get_shipping_dest()"/>
+            <br/>
+            <t t-esc="partner_dest.name"/>
+            <div t-esc="partner_dest"
+                 t-options="{&quot;widget&quot;: &quot;contact&quot;, &quot;fields&quot;: [&quot;address&quot;, &quot;phone&quot;], &quot;no_marker&quot;: True, &quot;phone_icons&quot;: True}"/>
+        </xpath>
+    </template>
+
+    <template id="report_delivery_document_inherit" inherit_id="stock.report_delivery_document">
+        <xpath expr="//table/thead/tr/th[@name='th_sm_product']" position="before">
+            <th name="th_sm_code">
+                <strong>Vendor Code</strong>
+            </th>
+        </xpath>
+        <xpath expr="//table/tbody/tr/td[1]" position="before">
+            <td id="code">
+                <span t-esc="move.product_id._get_vendor_code()"/>
+            </td>
+        </xpath>
+    </template>
+
+</odoo>

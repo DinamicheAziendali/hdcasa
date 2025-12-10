@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <template id="report_purchasequotation_document_inherit" inherit_id="purchase.report_purchasequotation_document">
+        <xpath expr="//table/thead/tr/th[@name='th_description']" position="before">
+            <th name="th_code"><strong>Vendor Code</strong></th>
+        </xpath>
+        <xpath expr="//table/tbody/t/tr/t/td[@id='product']" position="before">
+            <td id="code">
+                <span t-esc="order_line.product_id._get_vendor_code()" />
+            </td>
+        </xpath>
+    </template>
+
+</odoo>
