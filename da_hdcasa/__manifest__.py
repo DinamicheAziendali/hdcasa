@@ -22,6 +22,7 @@
         "sale",
         "account",
         "l10n_it_edi",
+        "l10n_eu_oss_oca",
         "l10n_it_edi_oss",
     ],
     "data": [

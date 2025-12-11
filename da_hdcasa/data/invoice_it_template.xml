@@ -5,21 +5,21 @@
         inherit_id="l10n_it_edi.account_invoice_it_FatturaPA_export"
     >
         <xpath expr="//DatiBeniServizi/t[@t-as='tax_line']" position="before">
-            <t t-foreach="list(all_taxes[record.id].values())" t-as="oss_tax_data">
+            <t t-foreach="tax_lines" t-as="oss_tax_data">
                 <t
                     t-set="tax_description"
-                    t-value="'Aliquota IVA OSS ' + str(oss_tax_data['AliquotaIVA']) + '&#37; ' + str(oss_tax_data['Oss Country'].name)"
+                    t-value="'Aliquota IVA OSS ' + str(oss_tax_data['aliquota_iva']) + '&#37; ' + str(oss_tax_data.get('it_values', {}).get('oss_country_id'))"
                 />
-                <DettaglioLinee t-if="oss_tax_data.get('Oss Country', False)">
+                <DettaglioLinee t-if="oss_tax_data.get('it_values', {}).get('oss_country_id')">
                     <NumeroLinea t-out="len(record.mapped('invoice_line_ids')) + 1" />
                     <Descrizione t-out="encode_for_export(tax_description, 1000)" />
                     <Quantita>1.00</Quantita>
                     <UnitaMisura>Units</UnitaMisura>
                     <PrezzoUnitario
-                        t-out="format_monetary(oss_tax_data['Imposta'], euro)"
+                        t-out="format_monetary(oss_tax_data['imposta'], euro)"
                     />
                     <PrezzoTotale
-                        t-out="format_monetary(oss_tax_data['Imposta'], euro)"
+                        t-out="format_monetary(oss_tax_data['imposta'], euro)"
                     />
                     <AliquotaIVA>0.00</AliquotaIVA>
                     <Natura>N2.2</Natura>
@@ -33,16 +33,16 @@
             </t>
         </xpath>
         <xpath expr="//DatiBeniServizi/t[@t-as='tax_line']" position="after">
-            <t t-foreach="list(all_taxes[record.id].values())" t-as="oss_tax_data">
+            <t t-foreach="tax_lines" t-as="oss_tax_data">
                 <t
                     t-set="tax_description"
-                    t-value="'IVA OSS ' + str(oss_tax_data['AliquotaIVA']) + '&#37; ' + str(oss_tax_data['Oss Country'].name)"
+                    t-value="'IVA OSS ' + str(oss_tax_data['aliquota_iva']) + '&#37; ' + str(oss_tax_data.get('it_values', {}).get('oss_country_id'))"
                 />
-                <DatiRiepilogo t-if="oss_tax_data.get('Oss Country', False)">
+                <DatiRiepilogo t-if="oss_tax_data.get('it_values', {}).get('oss_country_id')">
                     <AliquotaIVA>0.00</AliquotaIVA>
                     <Natura>N2.2</Natura>
                     <ImponibileImporto
-                        t-out="format_monetary(oss_tax_data['Imposta'], euro)"
+                        t-out="format_monetary(oss_tax_data['imposta'], euro)"
                     />
                     <Imposta>0.00</Imposta>
                     <RiferimentoNormativo
@@ -50,20 +50,6 @@
                     />
                 </DatiRiepilogo>
             </t>
-        </xpath>
-    </template>
-
-    <template
-        id="l10n_it_edi_oss_line_it_inherit"
-        inherit_id="l10n_it_edi.account_invoice_line_it_FatturaPA"
-    >
-        <xpath
-            expr="//RiferimentoTesto[@t-out='format_alphanumeric(altri_dati_gestionali['riferimento_testo'])']"
-            position="attributes"
-        >
-            <attribute
-                name="t-out"
-            >'IVA OSS ' + str(format_numbers(tax_ids.amount)) + '&#37; ' + str(tax_ids.oss_country_id.name)</attribute>
         </xpath>
     </template>
 </odoo>
