@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+
+        <menuitem id="menu_order_risk"
+                  name="Order Risks"
+                  parent="integration.menu_external"
+                  action="external_order_risk_action"
+                  sequence="54"/>
+
+        <menuitem id="menu_order_source_name"
+                  name="Order Source Names"
+                  parent="integration.menu_external"
+                  action="external_order_source_name_action"
+                  sequence="55"/>
+
+        <menuitem id="menu_sale_channel"
+                  name="Sales Channels"
+                  parent="integration.menu_external"
+                  action="external_sale_channel_action"
+                  sequence="82"/>
+
+    </data>
+</odoo>

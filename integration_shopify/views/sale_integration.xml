@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+
+        <record id="view_sale_integration_form" model="ir.ui.view">
+            <field name="name">sale.integration.form</field>
+            <field name="model">sale.integration</field>
+            <field name="inherit_id" ref="integration.view_sale_integration_form" />
+            <field name="arch" type="xml">
+                <group name="other" position="inside">
+                    <field name="use_customer_currency" attrs="{'invisible': [('is_integration_shopify', '=', False)]}" widget="boolean_toggle"/>
+                </group>
+                <group name="advanced_sales_order_settings" position="inside">
+                    <field name="integration_channel_ids" widget="many2many_tags" attrs="{'invisible': [('is_integration_shopify', '=', False)]}" options="{'no_create': True, 'no_edit': True}"/>
+                    <div colspan="2">
+                        <button name="import_sale_channels" string="Import Sale Channels" type="object" class="btn btn-primary" attrs="{'invisible': [('is_integration_shopify', '=', False)]}" />
+                    </div>
+                </group>
+                <page name="sale_order_page" position="inside">
+                    <group string="Sale Order Metafields Mappings"
+                           name="sale_order_metafields_mappings"
+                           attrs="{'invisible': [('is_integration_shopify', '=', False)]}">
+                        <div colspan="2">
+                            <p>
+                                Use the table below to setup mappings between Shopify order metafields and fields on sale.order model in Odoo.
+                            </p>
+                            <p>
+                                <button name="update_metafields"
+                                        string="Update Metafields"
+                                        type="object"
+                                        class="btn btn-primary"
+                                        context="{'external_entity': 'order'}"
+                                />
+                            </p>
+                        </div>
+                        <field name="order_metafield_mapping_ids" colspan="2" nolabel="1">
+                            <tree editable="bottom">
+                                <field name="integration_id" invisible="1"/>
+                                <field name="filtered_odoo_fields" invisible="1"/>
+                                <field name="metafield_id"
+                                       domain="[('type', '=', 'order'), ('integration_id', '=', integration_id)]"
+                                       options="{'no_open': True, 'no_create': True}"/>
+                                <field name="metafield_key"/>
+                                <field name="metafield_type"/>
+                                <field name="odoo_field_id"
+                                       options="{'no_open': True, 'no_create': True}"
+                                       attrs="{'required': [('metafield_id', '!=', False)]}"/>
+                            </tree>
+                        </field>
+                    </group>
+                </page>
+
+                <page name="customer_default_page" position="inside">
+                    <group string="Customer Metafields Mappings"
+                           name="customer_metafields_mappings"
+                           attrs="{'invisible': [('is_integration_shopify', '=', False)]}">
+                        <div colspan="2">
+                            <p>
+                                Use the table below to setup mappings between Shopify customer metafields and fields on res.partner model in Odoo.
+                            </p>
+                            <p>
+                                <button name="update_metafields"
+                                        string="Update Metafields"
+                                        type="object"
+                                        class="btn btn-primary"
+                                        context="{'external_entity': 'customer'}"
+                                />
+                            </p>
+                        </div>
+                        <field name="customer_metafield_mapping_ids" colspan="2" nolabel="1">
+                            <tree editable="bottom">
+                                <field name="integration_id" invisible="1"/>
+                                <field name="filtered_odoo_fields" invisible="1"/>
+                                <field name="metafield_id"
+                                       domain="[('type', '=', 'customer'), ('integration_id', '=', integration_id)]"
+                                       options="{'no_open': True, 'no_create': True}"/>
+                                <field name="metafield_key"/>
+                                <field name="metafield_type"/>
+                                <field name="odoo_field_id"
+                                       options="{'no_open': True, 'no_create': True}"
+                                       attrs="{'required': [('metafield_id', '!=', False)]}"/>
+                            </tree>
+                        </field>
+                    </group>
+                </page>
+
+                <field name="ignore_vat_validation" position="after">
+                    <field name="shopify_customer_language" attrs="{'invisible': [('is_integration_shopify', '=', False)]}"/>
+                </field>
+
+                <!-- Shopify-specific sale pricelist warning message -->
+                <xpath expr="//span[@name='sale-pricelist-warning']" position="attributes">
+                    <attribute name="attrs">
+                        {'invisible': [('is_integration_shopify', '!=', False)]}
+                    </attribute>
+                </xpath>
+
+                <xpath expr="//span[@name='sale-pricelist-warning']" position="after">
+                    <span class="border-start border-warning border-2 d-block ps-2 sale-pricelist-warning" attrs="{'invisible': [('is_integration_shopify', '=', False)]}">
+                        <strong>Note:</strong> This pricelist is used for export only - its price goes to Shopify as the Price,
+                        and the regular Odoo price becomes the <strong>Compare at Price</strong>.<br />
+                        On import, if <strong>Compare at Price</strong> is set in Shopify, it will override the regular price in Odoo.
+                        Shopify's <strong>Price</strong> or <strong>Compare at Price</strong> are never imported into this pricelist.
+                    </span>
+                </xpath>
+
+                <xpath expr="//group[@name='inventory_location_mapping']/field[@name='location_line_ids']/." position="before">
+                    <field name="invalid_location_mapping" invisible="1"/>
+                    <div class="alert alert-warning mb-1" role="alert" attrs="{'invisible': [('invalid_location_mapping', '=', False)]}" colspan="2">
+                        <h4 style="color: inherit"><i class="fa fa-gear"/> Invalid Location Mapping</h4>
+                        All e-commerce locations must be mapped to unique Odoo warehouses. Duplicate warehouse mappings are not allowed.
+                        Please ensure that each e-commerce location is associated with a distinct Odoo warehouse to avoid configuration issue.
+                    </div>
+                </xpath>
+
+                <!-- Warning about migration from REST API to GraphQL API -->
+                <xpath expr="//div[@name='misc']" position="before">
+                    <div name="graphql-migration-warning" class="border border-danger p-4 mb-3" attrs="{'invisible': [('is_integration_shopify', '=', False)]}">
+                        <h4 class="text-danger">Important: Migration from Shopify REST API to Shopify GraphQL</h4>
+                        <p>
+                            Our next release will switch from the Shopify REST API to the new Shopify GraphQL API.
+                            Shopify has announced the deprecation of its REST API (effective March 2025),
+                            which means they may remove or stop supporting it at any time.
+                            This change affects nearly all connector functionality, so we strongly recommend
+                            testing the release on a staging server before deploying it to production.
+                        </p>
+
+                        <p>
+                            If you have questions or encounter any issues, please reach out to our support portal for assistance.
+                        </p>
+
+                        <a href="https://support.ventor.tech/" role="button" target="_blank" class="btn btn-outline-danger text-uppercase">
+                            Contact Support
+                        </a>
+                    </div>
+                </xpath>
+                <group name="barcode_ecomm_fields" position="after">
+                    <group name="shopify_advanced_sync_settings" string="Advanced Synchronization Settings" attrs="{'invisible': [('is_integration_shopify', '=', False)]}">
+                        <field name="disable_translations_sync" widget="boolean_toggle"/>
+                    </group>
+                </group>
+            </field>
+        </record>
+
+    </data>
+</odoo>
