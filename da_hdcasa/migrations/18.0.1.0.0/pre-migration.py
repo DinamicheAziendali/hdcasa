@@ -30,6 +30,7 @@ def migrate(cr, version):
                               if_installed=["l10n_it_central_journal"])
     modules_to_uninstall = [
         'l10n_it_central_journal',
+        'manomano',
         'da_account_move_show_posted_before',
         'om_mass_confirm_cancel',
         'integration_prestashop',
