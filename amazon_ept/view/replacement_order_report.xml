@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <record id="amazon_replacement_order_report_tree_view_ept" model="ir.ui.view">
+        <field name="name">Amazon Replacement Order Report Tree View</field>
+        <field name="model">replacement.order.report.request.history</field>
+        <field name="type">list</field>
+        <field name="arch" type="xml">
+            <list create="false">
+                <field name="name"/>
+                <field name="requested_date"/>
+                <field name="start_date"/>
+                <field name="end_date"/>
+                <field name="seller_id"/>
+                <field name="state"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="amazon_replacement_order_report_search_view_ept" model="ir.ui.view">
+        <field name="name">Amazon Replacement Order Report Search View</field>
+        <field name="model">replacement.order.report.request.history</field>
+        <field name="type">search</field>
+        <field name="arch" type="xml">
+            <search string="Report Request History">
+                <field name="name"/>
+                <field name="report_document_id"/>
+                <field name="report_id"/>
+                <field name="report_type"/>
+                <field name="state"/>
+                <field name="seller_id"/>
+                <group expand="0" string="Group By...">
+                    <filter name="seller" string="Seller" context="{'group_by':'seller_id'}"/>
+                    <filter name="status" string="Status" context="{'group_by':'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="amazon_replacement_order_report_form_view_ept" model="ir.ui.view">
+        <field name="name">Amazon Replacement Order Report Form View</field>
+        <field name="model">replacement.order.report.request.history</field>
+        <field name="type">form</field>
+        <field name="arch" type="xml">
+            <form string="Report Request History" create='0'>
+                <header>
+                    <button name="request_report" string="Request Report"
+                            invisible="state != 'draft'"
+                            class="oe_highlight"
+                            type="object"/>
+                    <button name="get_report_request_list" string="Check Status"
+                            invisible="state not in ('SUBMITTED', 'IN_PROGRESS', 'IN_QUEUE')"
+                            class="oe_highlight"
+                            type="object"/>
+                    <button name="get_report" string="Get Report"
+                            invisible="not report_document_id or attachment_id"
+                            class="oe_highlight"
+                            type="object"/>
+                    <button name="download_report" string="Download Report"
+                            invisible="not attachment_id"
+                            class="oe_highlight"
+                            type="object"/>
+                    <button name="process_replacement_order_report" string="Process File"
+                            invisible="not attachment_id or state not in ['DONE']"
+                            class="oe_highlight"
+                            help="Click Here To process the report file"
+                            type="object"/>
+                    <button name="process_replacement_order_report" string="Re-Process File" type="object"
+                            invisible="not attachment_id or state not in ('processed', 'partially_processed') or not mismatch_details"
+                            class="oe_highlight" help="Click Here To process the report file"/>
+                    <button name="list_of_process_logs" string="Mismatch Details"
+                            invisible="log_count == 0"
+                            class="oe_highlight"
+                            help="Click Here To Check Logs"
+                            type="object"/>
+                    <field name="state" widget="statusbar" statusbar_visible="SUBMITTED,IN_PROGRESS,DONE"/>
+                </header>
+                <sheet>
+                    <div class="oe_title" style="width: 500px;">
+                        <h1>
+                            <field name="name" class="oe_inline" readonly="1"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="seller_id" readonly="state != 'draft'" required="1"
+                                   on_change="on_change_seller_id(seller_id,start_date,end_date)"/>
+                            <field name="amz_instance_id" invisible="not amz_instance_id"
+                                   readonly="state != 'draft'"
+                                   domain="[('seller_id','=',seller_id)]"/>
+                        </group>
+                        <group>
+                            <label for="start_date" string="Date"/>
+                            <div>
+                                <field name="start_date" widget="daterange"
+                                       readonly="state != 'draft'"
+                                       options="{'related_end_date': 'end_date'}" class="oe_inline"/>
+                                to
+                                <field name="end_date" widget="daterange"
+                                       options="{'related_start_date': 'start_date'}"
+                                       readonly="state != 'draft'" class="oe_inline"/>
+                            </div>
+                            <field name="report_id" readonly="1"/>
+                            <field name="report_document_id" readonly="1"/>
+                            <field name="report_type" readonly="1" invisible="1"/>
+                            <field name="attachment_id" invisible="1"/>
+                            <field name="log_count" invisible="1"/>
+                            <field name="mismatch_details" invisible="1"/>
+                        </group>
+                    </group>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="amazon_replacement_order_report_action_ept" model="ir.actions.act_window">
+        <field name="name">Amazon Replacement Order Report</field>
+        <field name="res_model">replacement.order.report.request.history</field>
+        <field name="view_id" ref="amazon_replacement_order_report_tree_view_ept"/>
+    </record>
+
+    <menuitem id="amazon_fba_child_replacement_orders_menu" sequence="6"
+              name="FBA Replacement" parent="amazon_ept.amazon_fba_menu_core"
+              groups="amazon_ept.group_amazon_manager_ept"/>
+
+    <menuitem id="menu_amazon_replacement_order_report" name="Replacement Reports"
+              parent="amazon_ept.amazon_fba_child_replacement_orders_menu"
+              groups="amazon_ept.group_amazon_fba_ept,amazon_ept.group_amazon_fba_and_fbm_ept"
+              sequence="17" action="amazon_replacement_order_report_action_ept"/>
+</odoo>

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <data>
+
+        <record id="product_ecommerce_field_mapping_view_tree" model="ir.ui.view">
+            <field name="name">product.ecommerce.field.mapping.view.list</field>
+            <field name="model">product.ecommerce.field.mapping</field>
+            <field name="arch" type="xml">
+                <list editable="bottom"
+                      decoration-success="is_reference"
+                      decoration-info="is_barcode"
+                      decoration-muted="not active"
+                      decoration-danger="not active and (is_reference or is_barcode)"
+                >
+                    <field name="id" groups="base.group_no_one"/>
+                    <field name="active" widget="boolean_toggle"/>
+                    <field name="integration_id"/>
+                    <field name="ecommerce_field_id"/>
+                    <field name="odoo_model_id"/>
+                    <field name="integration_api_type" column_invisible="1"/> <!-- Required because it is used in the fields domains in the model -->
+                    <field name="odoo_field_id" optional="hide"/>
+                    <field name="odoo_field_name"/>
+                    <field name="technical_name"/>
+                    <field name="trackable_fields_rel" widget="many2many_tags" optional="hide"/>
+                    <field name="send_on_update"/>
+                    <field name="receive_on_import"/>
+                    <field name="is_reference" column_invisible="1"/> <!-- Required because it is used in list view decoration -->
+                    <field name="is_barcode" column_invisible="1"/> <!-- Required because it is used in list view decoration -->
+                </list>
+            </field>
+        </record>
+
+        <record id="product_ecommerce_field_mapping_view_search" model="ir.ui.view">
+            <field name="name">product.ecommerce.field.mapping.view.search</field>
+            <field name="model">product.ecommerce.field.mapping</field>
+            <field name="arch" type="xml">
+                <search>
+                    <field name="id" groups="base.group_no_one"/>
+                    <field name="integration_id"/>
+                    <field name="ecommerce_field_id" domain="[('is_private', '=', False)]"/>
+                    <field name="odoo_field_id"/>
+                    <field name="technical_name"/>
+                    <field name="trackable_fields_rel"/>
+                    <filter string="Not Update" name="send_on_update" domain="[('send_on_update', '=', False)]"/>
+                    <filter string="Not Import" name="receive_on_import" domain="[('receive_on_import', '=', False)]"/>
+                    <group expand="0" string="Group By">
+                        <filter string="E-Commerce Store" name="group_integration_id" context="{'group_by':'integration_id'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+
+        <record id="product_ecommerce_field_mapping_action" model="ir.actions.act_window">
+            <field name="name">Product Field Mappings</field>
+            <field name="path">eci-product-field-mappings</field>
+            <field name="res_model">product.ecommerce.field.mapping</field>
+            <field name="view_mode">list</field>
+            <field name="context">
+                {
+                    'active_test': False,
+                    'search_default_group_integration_id': 1,
+                }
+            </field>
+        </record>
+
+    </data>
+</odoo>

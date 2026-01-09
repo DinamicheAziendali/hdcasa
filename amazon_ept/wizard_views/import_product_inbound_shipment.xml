@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_inbound_product_import_wizard" model="ir.ui.view">
+        <field name="name">Inbound Shipment - Import Product Wizard</field>
+        <field name="model">import.product.inbound.shipment</field>
+        <field name="arch" type="xml">
+            <form string="Import Product" version="7">
+                <field name="shipment_id" invisible="True"/>
+                <group string="Configuration to import products">
+                    <group>
+                        <field name="update_existing"/>
+                        <field name="replace_product_qty" widget="boolean_toggle" invisible="not update_existing"/>
+                    </group>
+                </group>
+                <group string="Required Fields">
+                    <h3>default_code, quantity, quantity_in_case are required fields for Inbound Shipment.</h3>
+                    <!--Download Sample File button added by Keyur-->
+                    <button name="download_sample_product_csv" string="Download Sample File" type="object"
+                            class="oe_highlight capitalize"/>
+                </group>
+
+                <footer>
+                    <button name="import_shipment_line" string="Import Product" type="object" class="oe_highlight"/>
+                    or
+                    <button string="_Cancel" class="oe_link" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_inbound_shipment_new_product_import_wizard" model="ir.ui.view">
+        <field name="name">Inbound Shipment New - Import Product Wizard</field>
+        <field name="model">import.product.inbound.shipment</field>
+        <field name="arch" type="xml">
+            <form string="Import Product" version="7">
+                <sheet string="Configuration to import products">
+                    <group>
+                        <group>
+                            <field name="update_existing"/>
+                        </group>
+                        <group>
+                            <field name="choose_file" filename="file_name" string="Select file to import product"/>
+                            <field name="file_name" invisible="1"/>
+                        </group>
+                    </group>
+                    <div style="margin-top:1rem" class="alert alert-warning" role="alert">
+                        <div class="row">
+                            <div class="col-12">
+                                <p class="alert alert-warning" role="alert">
+                                    <b>
+                                        <h3 style="font-weight:bold; color:#7D5A29">
+                                            <u>Note :</u>
+                                            <br/>
+                                        </h3>
+                                        <h5 style="color:#7D5A29; font-weight:bold">
+                                            <ol>
+                                                <li>This operation allows to add the inbound shipment lines from uploaded file.</li>
+                                                <li>You can import the products into xlsx format only</li>
+                                                <li>In file will have column Seller sku, Quantity, Label Owner, Prep Owner and two other</li>
+                                                <li>Do you want to update already exist record ? Will update the existing Quantity in Inbound Shipment Lines</li>
+                                                <li>If Label and Prep Owner are not provided in file then by default will take according to Inbound Shipment Plan Label and Prep Owner</li>
+                                            </ol>
+                                        </h5>
+                                    </b>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </sheet>
+                <footer>
+                    <button name="import_inbound_shipment_new_line" string="Import Product" type="object" class="oe_highlight"/>
+                    <button name="download_sample_product_csv" string="Download Sample File" type="object"
+                            class="oe_highlight capitalize"/>
+                    <button string="Cancel" class="oe_highlight" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <record id="inbound_shipment_report_data_list_view_ept" model="ir.ui.view">
+        <field name="name">Inbound Shipment Report Data List</field>
+        <field name="model">inbound.shipment.report.data.ept</field>
+        <field name="arch" type="xml">
+            <list create="false">
+                <field name="inbound_shipment_ref" readonly="1"/>
+                <field name="seller_sku" readonly="1"/>
+                <field name="shipped_qty" readonly="1"/>
+                <field name="received_qty" readonly="1"/>
+                <field name="current_status" readonly="1"/>
+                <field name="company_id" readonly="1"/>
+                <field name="is_display_record" column_invisible="True"/>
+            </list>
+        </field>
+    </record>
+    <record id="inbound_shipment_report_data_search_view_ept" model="ir.ui.view">
+        <field name="name">Inbound Shipment Report Data Search</field>
+        <field name="model">inbound.shipment.report.data.ept</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="inbound_shipment_ref"/>
+                <field name="seller_sku"/>
+                <field name="current_status"/>
+                <filter name="filter_mismatch_qty" string="Mismatch Quantity" domain="[('is_display_record', '=', True)]"/>
+                <group string="Group By">
+                    <filter name="group_by_inbound_shipment_ref" string="Inbound Shipment Ref" context="{'group_by': 'inbound_shipment_ref'}"/>
+                    <filter string="Seller Sku" name="seller_sku" context="{'group_by':'seller_sku'}"/>
+                    <filter string="Status" name="current_status" context="{'group_by':'current_status'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+    <record id="action_inbound_shipment_report_data_ept" model="ir.actions.act_window">
+        <field name="name">Inbound Shipment Report Data</field>
+        <field name="res_model">inbound.shipment.report.data.ept</field>
+        <field name="view_mode">list</field>
+        <field name="search_view_id" ref="inbound_shipment_report_data_search_view_ept"/>
+        <field name="context">{'search_default_group_by_inbound_shipment_ref': 1, 'search_default_filter_mismatch_qty': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Inbound Shipment Report Data
+            </p>
+        </field>
+    </record>
+    <menuitem id="amazon_inbound_shipment_report_data_ept_menu" name="Inbound Shipment Report Data"
+        parent="amazon_ept.amazon_inbound_menu_core" sequence="6" action="action_inbound_shipment_report_data_ept" />
+</odoo>

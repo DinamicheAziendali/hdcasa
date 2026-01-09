@@ -1,0 +1,337 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--This is a common view for cron configuration wizard -->
+    <record id="amazon_fba_cron_configuration_ept_form_view"
+            model="ir.ui.view">
+        <field name="name">fba.cron.configuration</field>
+        <field name="model">fba.cron.configuration</field>
+        <field name="priority">11</field>
+        <field name="arch" type="xml">
+            <form string="Manual Queue Process">
+                <field name="amz_seller_id" invisible="1"/>
+                <field name="amazon_selling" invisible="1"/>
+                <div name="fba_pending_orders"
+                     invisible="not amz_seller_id or amazon_selling == 'FBM'">
+                    <div class="row mt16 o_settings_container">
+                        <div class="col-xs-12 col-md-6 o_setting_box">
+                            <div class="o_setting_left_pane">
+                                <field name="amz_auto_import_fba_pending_order" widget="boolean_toggle" style="margin-left: -10px;"
+                                       help="If Ticked, Amazon FBA Orders automatically Imported by system from Amazon."/>
+                            </div>
+                            <div class="o_setting_right_pane">
+                                <label for="amz_auto_import_fba_pending_order"/>
+                                <div class="text-muted">
+                                    Schedule automized FBA pending orders and check cancel order in Amazon
+                                </div>
+                                <div>
+                                    <field name="amz_pending_order_import_interval_number"
+                                           required="amz_auto_import_fba_pending_order and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not amz_auto_import_fba_pending_order"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="amz_pending_order_import_interval_type"
+                                           required="amz_auto_import_fba_pending_order and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not amz_auto_import_fba_pending_order"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="amz_pending_order_next_execution"
+                                           required="amz_auto_import_fba_pending_order and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not amz_auto_import_fba_pending_order"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="amz_pending_order_import_user_id"
+                                            required="amz_auto_import_fba_pending_order and amazon_selling != 'FBM' and amz_seller_id"
+                                            invisible="not amz_auto_import_fba_pending_order"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-xs-12 col-md-6 o_setting_box">
+                            <div class="o_setting_left_pane">
+                                <field name="amz_auto_import_shipment_report" widget="boolean_toggle" style="margin-left: -10px;"
+                                       help="If Ticked, system will import and process shipment report automatically from Amazon FBA."/>
+                            </div>
+                            <div class="o_setting_right_pane">
+                                <label for="amz_auto_import_shipment_report"
+                                       string="Auto Request and Process FBA Shipment Report ?"/>
+                                <div class="text-muted">
+                                    Schedule automized request and process FBA shipment report
+                                </div>
+                                <div>
+                                    <field name="amz_ship_report_import_interval_number"
+                                           required="amz_auto_import_shipment_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not amz_auto_import_shipment_report or not amz_seller_id"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="amz_ship_report_import_interval_type"
+                                           required="amz_auto_import_shipment_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not amz_auto_import_shipment_report or not amz_seller_id"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="amz_ship_report_import_next_execution"
+                                           required="amz_auto_import_shipment_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not amz_auto_import_shipment_report or not amz_seller_id"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="amz_ship_report_import_user_id"
+                                           required="amz_auto_import_shipment_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not amz_auto_import_shipment_report or not amz_seller_id"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+                <div name="removal_order_for_seller"
+                     invisible="not amz_seller_id or amazon_selling == 'FBM'">
+                    <div class="row mt16 o_settings_container">
+                        <div class="col-xs-12 col-md-6 o_setting_box">
+                            <div class="o_setting_left_pane">
+                                <field name="auto_create_removal_order_report" widget="boolean_toggle" style="margin-left: -10px;"
+                                       class="oe_inline"/>
+                            </div>
+                            <div class="o_setting_right_pane">
+                                <label for="auto_create_removal_order_report"
+                                       string="Auto Request and Process Removal Order Report ?"/>
+                                <div class="text-muted">
+                                     Schedule automized request and process removal order report
+                                </div>
+                                <div>
+                                    <field name="fba_removal_order_interval_number"
+                                           required="auto_create_removal_order_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not auto_create_removal_order_report"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="fba_removal_order_interval_type"
+                                           required="auto_create_removal_order_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not auto_create_removal_order_report"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="fba_removal_order_next_execution"
+                                           required="auto_create_removal_order_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not auto_create_removal_order_report"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="fba_removal_order_user"
+                                           required="auto_create_removal_order_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not auto_create_removal_order_report"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-xs-12 col-md-6 o_setting_box">
+                            <div class="o_setting_left_pane">
+                                <field name="amz_auto_import_return_report" widget="boolean_toggle" style="margin-left: -10px;"
+                                       help="If Ticked, system will import customer return report automatically from Amazon FBA."/>
+                            </div>
+                            <div class="o_setting_right_pane">
+                                <label for="amz_auto_import_return_report"
+                                       string="Auto Request and Process FBA Customer Return Report ?"/>
+                                <div class="text-muted">
+                                    Schedule automized request and process FBA customer return report
+                                </div>
+                                <div>
+                                    <field name="amz_return_report_import_interval_number"
+                                           required="amz_auto_import_return_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not amz_auto_import_return_report or not amz_seller_id"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="amz_return_report_import_interval_type"
+                                           required="amz_auto_import_return_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not amz_auto_import_return_report or not amz_seller_id"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="amz_return_report_import_next_execution"
+                                           required="amz_auto_import_return_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not amz_auto_import_return_report or not amz_seller_id"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="amz_return_report_import_user_id"
+                                           required="amz_auto_import_return_report and amz_seller_id"
+                                           invisible="not amz_auto_import_return_report or not amz_seller_id"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+                <div name="inventory" invisible="not amz_seller_id">
+                        <div class="row mt16 o_settings_container" name="fbm_inv">
+                            <div class="col-xs-12 col-md-6 o_setting_box"
+                                 invisible="amazon_selling == 'FBM'">
+                                <div class="o_setting_left_pane">
+                                    <field name="amz_stock_auto_import_by_report" class="oe_inline" widget="boolean_toggle" style="margin-left: -10px;"
+                                           help="If Ticked, Product Stock will be automatically Imported by system from Amazon FBA."/>
+                                </div>
+                                <div class="o_setting_right_pane">
+                                    <label for="amz_stock_auto_import_by_report"
+                                           string="Auto Request and Process FBA Live Stock Report ?"/>
+                                    <div class="text-muted">
+                                        Schedule automized request and process live FBA inventory report from Amazon
+                                    </div>
+                                    <div>
+                                        <field name="amz_inventory_import_interval_number"
+                                               required="amz_stock_auto_import_by_report and amazon_selling != 'FBM' and amz_seller_id"
+                                               invisible="not amz_stock_auto_import_by_report"
+                                               class="oe_inline border border-primary rounded oe_left m-2"/>
+                                        <field name="amz_inventory_import_interval_type"
+                                               required="amz_stock_auto_import_by_report and amazon_selling != 'FBM' and amz_seller_id"
+                                               invisible="not amz_stock_auto_import_by_report"
+                                               class="oe_inline border border-primary rounded oe_left m-2"/>
+                                        <field name="amz_inventory_import_next_execution"
+                                               required="amz_stock_auto_import_by_report and amazon_selling != 'FBM' and amz_seller_id"
+                                               invisible="not amz_stock_auto_import_by_report"
+                                               class="oe_inline border border-primary rounded oe_left m-2"/>
+                                        <field name="amz_inventory_import_user_id"
+                                               required="amz_stock_auto_import_by_report and amazon_selling != 'FBM' and amz_seller_id"
+                                               invisible="not amz_stock_auto_import_by_report"
+                                               class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-xs-12 col-md-6 o_setting_box">
+                            <div class="o_setting_left_pane">
+                                <field name="auto_create_fba_stock_adj_report" class="oe_inline" widget="boolean_toggle" style="margin-left: -10px;"
+                                       help="If Ticked, Order will be automatically Imported by system from Amazon."/>
+                            </div>
+                            <div class="o_setting_right_pane">
+                                <label for="auto_create_fba_stock_adj_report"
+                                       string="Auto Request and Process FBA Stock Adjustment Report ?"/>
+                                <div class="text-muted">
+                                    Schedule automized request and process live FBA stock adjustment report from Amazon
+                                </div>
+                                <div>
+                                    <field name="fba_stock_adj_report_interval_number"
+                                           required="auto_create_fba_stock_adj_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not auto_create_fba_stock_adj_report"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="fba_stock_adj_report_interval_type"
+                                           required="auto_create_fba_stock_adj_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not auto_create_fba_stock_adj_report"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="fba_stock_adj_report_next_execution"
+                                           required="auto_create_fba_stock_adj_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not auto_create_fba_stock_adj_report"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="fba_stock_adj_report_user_id"
+                                           required="auto_create_fba_stock_adj_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not auto_create_fba_stock_adj_report"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                </div>
+                            </div>
+                        </div>
+                        </div>
+                </div>
+                <div name="inbound_shipment"
+                     invisible="not amz_seller_id or amazon_selling == 'FBM'">
+
+                    <div class="row mt16 o_settings_container">
+                        <div class="col-xs-12 col-md-6 o_setting_box">
+                            <div class="o_setting_left_pane">
+                                <field name="amz_auto_import_inbound_shipment_status" class="oe_inline" widget="boolean_toggle" style="margin-left: -10px;"
+                                       help="If Ticked, Inbound Shipments will be automatically process in system, If shipment processed/shipped in Amazon."/>
+                            </div>
+                            <div class="o_setting_right_pane">
+                                <label for="amz_auto_import_inbound_shipment_status"
+                                       string="Auto Import FBA Inbound Shipment Item Status ?"/>
+                                <div class="text-muted">
+                                    Schedule automized import FBA inbound shipment item status from Amazon
+                                </div>
+                                <div>
+                                    <field name="amz_shipment_status_import_interval_number"
+                                           required="amz_auto_import_inbound_shipment_status and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not amz_auto_import_inbound_shipment_status"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="amz_shipment_status_import_interval_type"
+                                           required="amz_auto_import_inbound_shipment_status and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not amz_auto_import_inbound_shipment_status"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="amz_shipment_status_import_next_execution"
+                                           required="amz_auto_import_inbound_shipment_status and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not amz_auto_import_inbound_shipment_status"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="amz_shipment_status_import_user_id"
+                                           required="amz_auto_import_inbound_shipment_status and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not amz_auto_import_inbound_shipment_status"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-xs-12 col-md-6 o_setting_box">
+                            <div class="o_setting_left_pane">
+                                <field name="amz_auto_import_awd_shipment" class="oe_inline" widget="boolean_toggle"
+                                       style="margin-left: -10px;"
+                                       help="If Ticked, AWD Shipments will be automatically process in system, If shipment processed/shipped in Amazon."/>
+                            </div>
+                            <div class="o_setting_right_pane">
+                                <label for="amz_auto_import_awd_shipment"
+                                       string="Auto Import FBA AWD Shipment ?"/>
+                                <div class="text-muted">
+                                    Schedule automized import FBA AWD Shipment from Amazon
+                                </div>
+                                <div>
+                                    <field name="amz_awd_shipment_status_import_interval_number"
+                                           required="amz_auto_import_awd_shipment and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not amz_auto_import_awd_shipment"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="amz_awd_shipment_status_import_interval_type"
+                                           required="amz_auto_import_awd_shipment and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not amz_auto_import_awd_shipment"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="amz_awd_shipment_status_import_next_execution"
+                                           required="amz_auto_import_awd_shipment and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not amz_auto_import_awd_shipment"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="amz_awd_shipment_status_import_user_id"
+                                           required="amz_auto_import_awd_shipment and amazon_selling != 'FBM' and amz_seller_id"
+                                           invisible="not amz_auto_import_awd_shipment"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-xs-12 col-md-6 o_setting_box">
+                            <div class="o_setting_left_pane">
+                                <field name="auto_create_fba_repl_orders_report" class="oe_inline" widget="boolean_toggle"
+                                       style="margin-left: -10px;"
+                                       help="If Ticked, Replacement Orders Reports will be automatically Imported by system from Amazon."/>
+                            </div>
+                            <div class="o_setting_right_pane">
+                                <label for="auto_create_fba_repl_orders_report"
+                                       string="Auto Request and Process FBA Replacement Orders Report ?"/>
+                                <div class="text-muted">
+                                    Schedule automized request and process live FBA Replacement Orders report from Amazon
+                                </div>
+                                <div>
+                                    <field name="fba_repl_orders_report_interval_number"
+                                           invisible="not auto_create_fba_repl_orders_report"
+                                           required="auto_create_fba_repl_orders_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="fba_repl_orders_report_interval_type"
+                                           invisible="not auto_create_fba_repl_orders_report"
+                                           required="auto_create_fba_repl_orders_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="fba_repl_orders_report_next_execution"
+                                           invisible="not auto_create_fba_repl_orders_report"
+                                           required="auto_create_fba_repl_orders_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                    <field name="fba_repl_orders_report_user_id"
+                                           invisible="not auto_create_fba_repl_orders_report"
+                                           required="auto_create_fba_repl_orders_report and amazon_selling != 'FBM' and amz_seller_id"
+                                           class="oe_inline border border-primary rounded oe_left m-2"/>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <footer>
+                    <button string="Save Cron Configuration"
+                            class="oe_highlight" type="object" name="save_cron_configuration"/>
+                    <button string="Cancel" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_wizard_fba_cron_configuration_ept" model="ir.actions.act_window">
+        <field name="name">Scheduled Actions Configuration</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="res_model">fba.cron.configuration</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+</odoo>

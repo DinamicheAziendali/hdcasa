@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="amazon_new_inbound_shipment_print_unique_label_wizard_form_view" model="ir.ui.view">
+        <field name="name">Inbound Shipment New Labels Wizard</field>
+        <field name="model">amazon.new.shipment.label.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Get Label">
+                <group string='Delivery Packing'>
+                    <field name="page_type" class="oe_inline" />
+                </group>
+                <newline />
+                <hr/>
+                <div class="alert alert-warning" role="alert">
+                    <div>
+                        <p>
+                            <ul>
+                                <li>GetUniquelabels from amazon, your box-no must be same as carton exported box-no.</li>
+                            </ul>
+                        </p>
+                    </div>
+                    <table style="width:60% border: 1px solid black; border-collapse: collapse;">
+                      <tr>
+                        <th colspan="2" style="border: 1px solid black; border-collapse: collapse; text-align: center;"><h6>Package Type Description</h6></th>
+                      </tr>
+                      <tr>
+                      <td style="border: 1px solid black; border-collapse: collapse; padding:8px">PackageLabel_Letter_2
+                        </td>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">Two labels per US Letter label sheet. This is the only valid value for Amazon-partnered shipments in the US that use United Parcel Service (UPS) as the carrier. Supported in Canada and the US.</td>
+                      </tr>
+                      <tr>
+                      <td style="border: 1px solid black; border-collapse: collapse; padding:8px">PackageLabel_Letter_4
+                        </td>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">Four labels per US Letter label sheet. This is the only valid value for non-Amazon-partnered shipments in the US. Supported in Canada and the US.</td>
+                      </tr>
+                      <tr>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">PackageLabel_Letter_6</td>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">Six labels per US Letter label sheet. This is the only valid value for non-Amazon-partnered shipments in the US. Supported in Canada and the US.</td>
+                      </tr>
+                      <tr>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">PackageLabel_A4_2</td>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">Two labels per A4 label sheet.</td>
+                      </tr>
+                      <tr>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">PackageLabel_A4_4</td>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">Four labels per A4 label sheet .</td>
+                      </tr>
+                      <tr>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">PackageLabel_Plain_Paper</td>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">One label per sheet of US Letter paper. Only for non-Amazon-partnered shipments.</td>
+                      </tr>
+                      <tr>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">PackageLabel_Letter_6_CarrierLeft</td>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">PackageLabel_Letter_6_CarrierLeft</td>
+                      </tr>
+                      <tr>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">PackageLabel_Plain_Paper_CarrierBottom</td>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">PackageLabel_Plain_Paper_CarrierBottom</td>
+                      </tr>
+                      <tr>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">PackageLabel_Thermal</td>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">For use of a thermal printer. Supports Amazon-partnered shipments with UPS.</td>
+                      </tr>
+                      <tr>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">PackageLabel_Thermal_Unified</td>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">For use of a thermal printer. Supports shipments with ATS.</td>
+                      </tr>
+                      <tr>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">PackageLabel_Thermal_NonPCP</td>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">For use of a thermal printer. Supports non-Amazon-partnered shipments.</td>
+                      </tr>
+                      <tr>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">PackageLabel_Thermal_No_Carrier_Rotation</td>
+                        <td style="border: 1px solid black; border-collapse: collapse; padding:8px">For use of a thermal printer. Supports Amazon-partnered shipments with DHL.</td>
+                      </tr>
+                    </table>
+                </div>
+                <footer>
+                    <button name="get_labels" string="Print Unique Labels"
+                        type="object" class="oe_highlight" />
+                    <button string="Cancel" class="oe_highlight" special="cancel" />
+                </footer>
+            </form>
+        </field>
+    </record>
+
+</odoo>

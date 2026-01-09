@@ -1,0 +1,52 @@
+<?xml version="1.0" ?>
+<odoo>
+
+	<record id="amazon_stock_adjustment_reason_tree_ept" model="ir.ui.view">
+		<field name="name">Amazon Stock Adjustment Reason</field>
+		<field name="model">amazon.adjustment.reason.code</field>
+		<field name="type">list</field>
+		<field name="arch" type="xml">
+			<list>
+				<field name="name"/>
+				<field name="type"/>
+				<field name="group_id"/>
+				<field name="counter_part_id"/>
+				<field name="is_reimbursed" column_invisible="1"/>
+			</list>
+		</field>
+	</record>
+	<record id="amazon_stock_adjustment_reason_form_view_ept" model="ir.ui.view">
+		<field name="name">Amazon Stock Adjustment Reason</field>
+		<field name="model">amazon.adjustment.reason.code</field>
+		<field name="type">form</field>
+		<field name="arch" type="xml">
+			<form string="Report Request History">
+				<sheet>
+					<div class="oe_title">
+						<h1>
+							<field name="name" class="oe_inline"/>
+						</h1>
+					</div>
+					<group>
+						<group>
+							<field name="description"/>
+							<field name="type"/>
+							<field name="is_reimbursed" invisible="1"/>
+							<field name="long_description"/>
+						</group>
+						<group>
+							<field name="group_id" readonly="1"/>
+							<field name="counter_part_id"/>
+						</group>
+					</group>
+				</sheet>
+			</form>
+		</field>
+	</record>
+
+	<record id="action_stock_adjustment_reason_ept" model="ir.actions.act_window">
+		<field name="name">Amazon Stock Adjustment Reason</field>
+		<field name="res_model">amazon.adjustment.reason.code</field>
+		<field name="view_id" ref="amazon_stock_adjustment_reason_tree_ept"/>
+	</record>
+</odoo>

@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <record id="new_amazon_inbound_shipment_search_view" model="ir.ui.view">
+        <field name="name">New Amazon inbound shipment Search</field>
+        <field name="model">inbound.shipment.new.ept</field>
+        <field name="type">search</field>
+        <field name="arch" type="xml">
+            <search string="Inbound Shipment">
+                <field name="name" />
+                <field name="ship_from_address_id"/>
+                <field name="destination_address_id"/>
+                <field name="shipment_confirmation_id"/>
+                <field name="shipment_plan_id"/>
+                <field name="instance_id_ept"/>
+                <field name="state"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="new_amazon_inbound_shipment_tree_view" model="ir.ui.view">
+        <field name="name">new.amazon.inbound.shipment.list.view</field>
+        <field name="model">inbound.shipment.new.ept</field>
+        <field name="arch" type="xml">
+            <list create="false">
+                <field name="name" />
+                <field name="shipment_plan_id"/>
+                <field name="shipment_id"/>
+                <field name="shipment_confirmation_id"/>
+                <field name="ship_from_address_id" />
+                <field name="state"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="new_amazon_inbound_shipment_form_view" model="ir.ui.view">
+        <field name="name">new.amazon.inbound.shipment.form.view</field>
+        <field name="model">inbound.shipment.new.ept</field>
+        <field name="arch" type="xml">
+            <form string="Shipment" create="false">
+                <header>
+                    <field name="shipment_plan_id" invisible="1"/>
+                    <field name="transport_content_exported" invisible="1"/>
+                    <field name="is_package_label_downloaded" invisible="1"/>
+                    <field name="is_pallet_label_downloaded" invisible="1"/>
+                    <button name="check_status" string="Check Status" class="oe_highlight capitalize" type="object"/>
+                    <button name="get_shipment_report_data" string="Get Shipment Report Data"
+                            class="oe_highlight capitalize" type="object"/>
+                    <button name="get_package_labels" string="Get Package Labels"
+                            class="oe_highlight capitalize" type="object"
+                            invisible="not transport_content_exported or state in ['CLOSED','CANCELLED','DELETED']
+                            or is_package_label_downloaded"/>
+                    <button name="get_package_labels" string="Get Pallet labels"
+                            class="oe_highlight capitalize" type="object" context="{'label_type':'delivery'}"
+                            invisible="not transport_content_exported or state in ['CLOSED','CANCELLED','DELETED']
+                            or is_pallet_label_downloaded or not is_ltl_shipment"/>
+                    <button name="get_bill_of_lading"
+                            invisible="not transport_content_exported or state in ['CLOSED','CANCELLED','DELETED']
+                            or is_package_label_downloaded" string="Get Bill Of Lading"
+                            class="oe_highlight capitalize" type="object"
+                            help="This operation is only valid for LTL (Less Than Truckload) shipments. If your shipment is not LTL,
+                            you may encounter an error or receive a blank response."/>
+                    <field name="state" widget="statusbar" statusbar_visible="WORKING,READY_TO_SHIP,SHIPPED,CLOSED" />
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_pickings" type="object" class="oe_stat_button" icon="fa-truck"
+                                invisible="count_pickings == 0">
+                            <div class="o_field_widget o_stat_info">
+                                <span class="o_stat_value">
+                                    <field name="count_pickings"/>
+                                    Pickings
+                                </span>
+                            </div>
+                        </button>
+                    </div>
+                    <div class="oe_title">
+                        <h1><field name="name" class="oe_inline" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="shipment_plan_id" readonly="1"/>
+                            <field name="active" invisible="1"/>
+                            <field name="fulfill_center_id" readonly="1"/>
+                            <field name="destination_address_id" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="shipment_id" readonly="1"/>
+                            <field name="shipment_confirmation_id" readonly="1"/>
+                            <field name="amazon_reference_id" readonly="1"/>
+                            <field name="ship_from_address_id" readonly="1"/>
+                            <field name="is_ltl_shipment" invisible="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Products">
+                            <separator string='Shipment Items' colspan="4" />
+                            <field name="shipment_line_ids" nolabel="1"
+                                   colspan="4" >
+                                <form string="Shipment Item">
+                                    <group>
+                                        <group>
+                                            <field name="amazon_product_id"/>
+                                            <field name="seller_sku"/>
+                                        </group>
+                                        <group>
+                                            <field name="fn_sku"/>
+                                            <field name="quantity"/>
+                                            <field name="received_qty" />
+                                            <field name="difference_qty" />
+                                            <field name="is_extra_line" />
+                                        </group>
+                                    </group>
+                                </form>
+                                <list delete="0" create="0" editable="top"
+                                      decoration-success="is_extra_line==True" decoration-danger="difference_qty!=0">
+                                    <field name="amazon_product_id" readonly="1"/>
+                                    <field name="quantity"/>
+                                    <field name="received_qty" readonly="1"/>
+                                    <field name="difference_qty" readonly="1"/>
+                                    <field name="seller_sku" readonly="1"/>
+                                    <field name="fn_sku" string='FBA(FN) SKU' readonly="1"/>
+                                    <field name="is_extra_line" readonly="1"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string='Transport Information' invisible="not is_ltl_shipment">
+                            <group string='LTL/FTL Info'>
+                                <group>
+                                    <field name="partnered_ltl_id" readonly="transport_content_exported"/>
+                                    <field name="seller_freight_class" readonly="transport_content_exported"/>
+                                </group>
+                                <group>
+                                    <field name="seller_declared_value"/>
+                                    <field name="declared_value_currency_id"/>
+                                </group>
+                            </group>
+                            <field name="new_partnered_ltl_ids" context="{'new_inbound_shipment': id}"
+                                   nolabel="1" colspan="4" readonly="transport_content_exported">
+                                <list>
+                                    <field name="ul_id" string='Dimension' required="1"/>
+                                    <field name="weight_unit" string='Weight Unit'/>
+                                    <field name="weight_value" string='Weight Value'/>
+                                    <field name="stack_ability"/>
+                                </list>
+                                <form string="LTL/FTL Parcel">
+                                    <group>
+                                        <group>
+                                            <field name="ul_id" required="1" class="oe_inline"/>
+                                        </group>
+                                        <group name='weight'>
+                                            <field name="weight_value" required="1" class="oe_inline"/>
+                                            <field name="weight_unit" required="1" class="oe_inline"/>
+                                        </group>
+                                        <group>
+                                            <field name="stack_ability"/>
+                                        </group>
+                                    </group>
+                                </form>
+                            </field>
+                        </page>
+                        <page string='Pickings' invisible="picking_ids == []">
+                            <field name="picking_ids" readonly="1" nolabel="1"
+                                   colspan="4">
+                                <list>
+                                    <field name="is_fba_wh_picking" column_invisible="True"/>
+                                    <field name="name" />
+                                    <field name="partner_id" />
+                                    <field name="amazon_shipment_id" />
+                                    <field name="fulfill_center" />
+                                    <field name="state"/>
+                                    <field name="total_shipped_qty"/>
+                                    <field name="total_received_qty"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Error Log">
+                            <field name="log_ids" readonly="1" nolabel="1">
+                                <list>
+                                    <field name="message"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="new_action_amazon_inbound_shipment_ept" model="ir.actions.act_window">
+        <field name="name">New Inbound Shipments</field>
+        <field name="res_model">inbound.shipment.new.ept</field>
+        <field name="type">ir.actions.act_window</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="new_amazon_inbound_shipment_search_view" />
+        <field name="help" type="html">
+            <p>
+                Inbound Shipments are prepared automatically by Inbound Shipment
+                Plan.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="new_amazon_inbound_shipments_menu" name="Inbound Shipments"
+              parent="amazon_ept.amazon_inbound_menu_core" sequence="2"
+              action="new_action_amazon_inbound_shipment_ept"
+              groups="amazon_ept.group_amazon_fba_ept"/>
+
+</odoo>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<odoo>
+    <record id="amazon_replacement_order_reason_code_tree_view_ept" model="ir.ui.view">
+        <field name="name">Amazon Replacement Order Reason Code Tree View</field>
+        <field name="model">amazon.replacement.order.reason.code</field>
+        <field name="type">list</field>
+        <field name="arch" type="xml">
+            <list editable="bottom">
+                <field name="replace_order_code" string="Code"/>
+                <field name="replace_order_reason" string="Reason"/>
+            </list>
+        </field>
+    </record>
+    <record id="action_amazon_replacement_order_reason_code_ept" model="ir.actions.act_window">
+        <field name="name">Amazon Replacement Order Reason Configuration</field>
+        <field name="res_model">amazon.replacement.order.reason.code</field>
+        <field name="view_id" ref="amazon_ept.amazon_replacement_order_reason_code_tree_view_ept"/>
+    </record>
+    <menuitem id="menu_amazon_replacement_order_reason_configuration" name="Replacement Reasons"
+              parent="amazon_ept.menu_configuration_ept"
+              groups="amazon_ept.group_amazon_manager_ept"
+              sequence="104" action="amazon_ept.action_amazon_replacement_order_reason_code_ept"/>
+</odoo>

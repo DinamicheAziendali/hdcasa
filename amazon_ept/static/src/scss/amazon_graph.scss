@@ -1,0 +1,57 @@
+/* Added for set width and place of the fulfillment by filter */
+#sort_order_data_amazone {
+    max-width: calc(370px - 235px);
+    top: 2%;
+    right: 35%;
+}
+
+/* Added for the change button width for the amazon dashboard only */
+.dashboard_graph_ept[name='amazon_order_data'] {
+    .ep_kanban_records a {
+            width: 32.66%;
+            cursor: pointer;
+    }
+}
+.o_field_dashboard_graph_amz_ept {
+    width: 100%;
+    margin-top:8px;
+
+    .ep_kanban_graph {
+        border: 1px solid #ced4da;
+        border-radius: 5px;
+        padding: 10px;
+        color: #2b2b2b;
+        width: 100%;
+
+        .chartjs-render-monitor {
+            width: 100%;
+            padding: 3px 10px;
+        }
+
+        .ep_graph_details {
+            @media only screen and (max-width: 1440px) {
+                a {
+                    font-size : 0.875rem;
+                }
+                h4 {
+                    font-size: 0.9rem;
+                }
+            }
+        }
+    }
+
+    // Graph height
+    .graph_ept{
+        max-height:200px !important;
+    }
+
+    #sort_order_data {
+        max-width: calc(350px - 250px);
+        top: 2%;
+        right: 7%;
+    }
+    &[name='amazon_order_data'] .ep_kanban_records > a {
+        cursor: pointer;
+        width: 32.66%;
+    }
+}

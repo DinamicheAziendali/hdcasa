@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_inbound_shipment_transportation_options_details" model="ir.ui.view">
+        <field name="name">Inbound Shipment Transportation Options Details</field>
+        <field name="model">inbound.shipment.transportation.option.details</field>
+        <field name="arch" type="xml">
+            <form string="Inbound Shipment Transportation Option Details">
+                <field name="is_confirm_placement_option" invisible="1"/>
+                <field name="is_multiple_shipment" invisible="True"/>
+                <newline/>
+                <div invisible="not is_multiple_shipment">
+                    <div>
+                        <p>
+                            You have selected <field name="shipment_count" readonly="True"/> shipment in placement options
+                        </p>
+                        <br/>
+                        <p>
+                            Please find below selected shipment ids for your placement options,
+                        </p>
+                        <br/>
+                        <h3>
+                            <field name="shipment_ids" readonly="True"/>
+                        </h3>
+                        <br/>
+                        <p>
+                            - Please carefully select only one transportation option for each shipment id.
+                            - For your reference please consider above shipment ids and match with below listed transportation options.
+                        </p>
+                    </div>
+                    <br/>
+                </div>
+                <newline/>
+                <field name="inbound_shipment_list_transportation_option_ids">
+                    <list delete='false' create='false' editable="top">
+                        <field name="shipment_id" readonly="1" force_save="1"/>
+                        <field name="amz_transportation_id" required="True" domain="[('shipment_id','=',shipment_id)]"/>
+                        <field name="shipment_plan_id" column_invisible="True"/>
+                    </list>
+                </field>
+                <footer>
+                    <button name="confirm_transportation_option_sp_api_v2024"
+                            string="Confirm Transportation Option" type="object" class="oe_highlight"
+                            invisible="not is_confirm_placement_option"/>
+                    <button string="Cancel" class="oe_highlight" special="cancel"/>
+                </footer>
+               </form>
+            </field>
+        </record>
+
+    <record id="view_list_inbound_shipment_transportation_options_form_view" model="ir.ui.view">
+        <field name="name">List Inbound Transportation Options Form View</field>
+        <field name="model">inbound.shipment.list.transportation.option.ept</field>
+        <field name="type">form</field>
+        <field name="arch" type="xml">
+            <form string="Transportation Option">
+                <group>
+                    <group>
+                        <field name="shipment_id" readonly="1" force_save="1"/>
+                        <field name="amz_transportation_id" force_save="1" domain="[('shipment_id','=',shipment_id)]"/>
+                    </group>
+                    <group>
+                        <field name="shipment_plan_id" readonly="1" force_save="1"/>
+                    </group>
+                </group>
+            </form>
+        </field>
+    </record>
+
+</odoo>

@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record model="ir.ui.view" id="view_form_picking_stock_ept">
+        <field name="name">view.form.picking.stock.ept</field>
+        <field name="model">stock.picking</field>
+        <field name="inherit_id" ref="stock.view_picking_form"/>
+        <field name="arch" type="xml">
+            <data>
+                <xpath expr="//sheet/notebook/page[@name='extra']/group/group/field[@name='picking_type_code']" position="after">
+                    <field name='seller_id' widget="selection" readonly="1" groups="amazon_ept.group_amazon_user_ept"/>
+                </xpath>
+                <notebook position="inside">
+                    <page string="Amazon Info" invisible="not amazon_shipment_id"
+                          groups="amazon_ept.group_amazon_user_ept">
+                        <field name="is_fba_wh_picking" invisible="1" />
+                        <field name="odoo_shipment_id" invisible="1" />
+                        <field name="inbound_ship_data_created" invisible="1" />
+                        <group>
+                            <group>
+                                <field name="ship_plan_id" invisible="1" />
+                                <field name="amazon_shipment_id" readonly="1"/>
+                                <field name="fulfill_center" invisible="not ship_plan_id"/>
+                            </group>
+                            <group>
+                                <field name="are_cases_required" invisible="not ship_plan_id"/>
+                                <field name="shipment_status" />
+                            </group>
+                            <group>
+                                <field name="amazon_shipment_date" readonly="1"/>
+                                <field name="amazon_purchase_date" readonly="1"/>
+                                <field name="estimated_arrival_date" readonly="1"/>
+                                <field name="buyer_requested_cancellation" invisible="1"/>
+                            </group>
+                        </group>
+                    </page>
+                </notebook>
+                <xpath expr="//div[@name='button_box']" position="after">
+                    <span class="badge-pill badge-danger float-right"
+                          groups="amazon_ept.group_amazon_user_ept"
+                          invisible="not buyer_requested_cancellation">Buyer Requested Cancellation</span>
+                    <br/>
+                    <br/>
+                    <div class="badge text-bg-info float-right"
+                         groups="amazon_ept.group_amazon_user_ept"
+                         invisible="not buyer_requested_cancellation or buyer_requested_cancellation in (False,'')">
+                        <field name="buyer_cancellation_reason" readonly="1"/>
+                    </div>
+                </xpath>
+                <xpath expr="//button[@name='button_validate']" position="after">
+                    <field name="feed_submission_id" invisible="1"/>
+                    <button name="action_update_order_status"
+                            type="object" string="Update Status"
+                            class="oe_highlight" invisible="feed_submission_id or amazon_shipment_id  or picking_type_code != 'outgoing' or state != 'done'"
+                            groups="amazon_ept.group_amazon_user_ept"
+                    />
+                </xpath>
+            </data>
+        </field>
+    </record>
+    <record id="amazon_vpicktree" model="ir.ui.view">
+        <field name="name">stock.picking.list</field>
+        <field name="priority">1000</field>
+        <field name="model">stock.picking</field>
+        <field name="arch" type="xml">
+            <list create="false"
+                  decoration-info="state == 'draft'" decoration-muted="state == 'cancel'"
+                  decoration-danger="state not in ('cancel', 'done') and scheduled_date &lt; current_date">
+                <field name="name"/>
+                <field name="location_id" options="{'no_create': True}" string="From" groups="stock.group_stock_multi_locations" optional="show"/>
+                <field name="location_dest_id" options="{'no_create': True}" string="To" groups="stock.group_stock_multi_locations" optional="show"/>
+                <field name="partner_id" optional="show"/>
+                <field name="user_id" optional="hide"/>
+                <field name="date" invisible="1"/>
+                <field name="scheduled_date" optional="show"/>
+                <field name="origin" optional="show"/>
+                <field name="group_id" invisible="1"/>
+                <field name="backorder_id" optional="hide"/>
+                <field name="state" optional="show"/>
+                <field name="priority" optional="hide"/>
+                <field name="picking_type_id" optional="hide"/>
+                <field name="company_id" groups="base.group_multi_company" optional="show"/>
+                <field name="activity_exception_decoration" widget="activity_exception"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_picking_tree_fba" model="ir.actions.act_window">
+        <field name="name">Inbound Shipment</field>
+        <field name="res_model">stock.picking</field>
+        <field name="view_id" ref="amazon_vpicktree"/>
+        <field name="type">ir.actions.act_window</field>
+        <field name="view_mode">list,form,calendar</field>
+        <field name="domain">[('odoo_shipment_id','!=',False)]</field>
+        <field name="search_view_id" ref="stock.view_picking_internal_search" />
+        <field name="help" type="html">
+            <p>
+                Inbound Shipments Pickings are prepared automatically by Inbound Shipment.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="amazon_inbound_shipment_pickings_menu" name="Transfers"
+        parent="amazon_ept.amazon_inbound_menu_core" sequence="5" action="action_picking_tree_fba" />
+</odoo>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+<record id="view_inbound_shipment_plan_new_check_status_wizard" model="ir.ui.view">
+        <field name="name">Inbound Shipment New - Check Status</field>
+        <field name="model">inbound.shipment.plan.new.check.status.ept</field>
+        <field name="arch" type="xml">
+            <form string="Check Inbound Shipment Plan Operations Status">
+                <sheet string="Check Status">
+                    <group>
+                        <group>
+                            <field name="operation" required="1"/>
+                        </group>
+                    </group>
+                    <div style="margin-top:1rem" class="alert alert-warning" role="alert">
+                        <div class="row">
+                            <div class="col-12">
+                                <p class="alert alert-warning" role="alert">
+                                    <b>
+                                        <h3 style="font-weight:bold; color:#7D5A29">
+                                            <u>Note :</u>
+                                            <br/>
+                                        </h3>
+                                        <h5 style="color:#7D5A29; font-weight:bold">
+                                            <ol>
+                                                <li>Select Any one operation Type for obtain the current status of the specified operation.</li>
+                                                 <li>Make sure select the operation based on already performed operation.</li>
+                                            </ol>
+                                        </h5>
+                                    </b>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </sheet>
+                <footer>
+                    <button name="amz_inbound_operation_check_status" string="Check Status" type="object" class="oe_highlight"/>
+                    <button string="Cancel" class="oe_highlight" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>

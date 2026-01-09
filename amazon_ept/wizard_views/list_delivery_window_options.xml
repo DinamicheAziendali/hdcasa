@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_inbound_shipment_delivery_window_options_details" model="ir.ui.view">
+        <field name="name">Inbound Shipment Delivery Window Options Details</field>
+        <field name="model">inbound.shipment.delivery.window.option.details</field>
+        <field name="arch" type="xml">
+            <form string="Inbound Shipment Delivery Window Option Details">
+                <field name="is_confirm_placement_option" invisible="1"/>
+                <field name="is_multiple_shipment" invisible="True"/>
+                <newline/>
+                <div invisible="not is_multiple_shipment">
+                    <div>
+                        <p>
+                            You have selected <field name="shipment_count" readonly="True"/> shipment in placement options
+                        </p>
+                        <br/>
+                        <p>
+                            Please find below selected shipment ids for your placement options,
+                        </p>
+                        <br/>
+                        <h3>
+                            <field name="shipment_ids" readonly="True"/>
+                        </h3>
+                        <br/>
+                        <p>
+                            - Please carefully select only one transportation option for each shipment id.
+                            - For your reference please consider above shipment ids and match with below listed transportation options.
+                        </p>
+                    </div>
+                    <br/>
+                </div>
+                <newline/>
+                <field name="inbound_shipment_list_delivery_window_option_ids" nolabel="1">
+                    <list delete='false' create='false'>
+                        <field name="is_selected_delivery_window" widget="boolean_toggle"/>
+                        <field name="availability_type"/>
+                        <field name="window_start_date"/>
+                        <field name="window_end_date"/>
+                        <field name="window_valid_until_date"/>
+                        <field name="shipment_id"/>
+                        <field name="delivery_window_option_id" column_invisible="True"/>
+                        <field name="shipment_plan_id" column_invisible="True"/>
+                    </list>
+                </field>
+                <footer>
+                    <button name="confirm_delivery_window_option_sp_api_v2024" string="Confirm Delivery Window Option" type="object"
+                            class="oe_highlight" invisible="not is_confirm_placement_option"/>
+                    <button string="Cancel" class="oe_highlight" special="cancel"/>
+                </footer>
+               </form>
+            </field>
+        </record>
+
+    <record id="view_list_inbound_shipment_delivery_window_options_form_view" model="ir.ui.view">
+        <field name="name">List Inbound Delivery Window Options Form View</field>
+        <field name="model">inbound.shipment.list.delivery.window.option.ept</field>
+        <field name="type">form</field>
+        <field name="arch" type="xml">
+            <form string="Delivery Window Option">
+                <group>
+                    <group>
+                        <field name="availability_type" readonly="1"/>
+                        <field name="window_start_date" readonly="1"/>
+                        <field name="window_end_date" readonly="1"/>
+                        <field name="shipment_id" readonly="1" force_save="1"/>
+                    </group>
+                    <group>
+                        <field name="window_valid_until_date" readonly="1"/>
+                        <field name="delivery_window_option_id" readonly="1" force_save="1"/>
+                        <field name="shipment_plan_id" readonly="1" force_save="1"/>
+                        <field name="is_selected_delivery_window" widget="boolean_toggle"/>
+                    </group>
+                </group>
+            </form>
+        </field>
+    </record>
+
+</odoo>
