@@ -38,4 +38,3 @@ def migrate(cr, version):
     for module in modules_to_uninstall:
         _logger.info(f"{module} UNISTALLING")
         util.uninstall_module(cr, module)
-    util.rename_table(cr, 'sale_commission', 'commission')
