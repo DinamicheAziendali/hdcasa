@@ -17,6 +17,8 @@ def migrate(cr, version):
         'account_invoice_report_due_list.report_invoice_document',
         'da_mitesys_sale.sale_order_search_inherit_view',
         'l10n_it_vat_statement_split_payment.view_account_config_settings_inherit',
+        'transport_carrier_brt.stock_picking_button_brt_form_view',
+        'transport_carrier_brt.stock_picking_brt_tree_view_inherit',
     ]
 
     for view in _deleted_xml_records:
