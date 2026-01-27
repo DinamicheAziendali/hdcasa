@@ -30,7 +30,7 @@ def migrate(cr, version):
     # cr.execute("UPDATE date_range SET type_id = (SELECT id FROM date_range_type WHERE name ->> 'en_US' = 'Anno fiscale New' AND active = true) WHERE type_id = 1;")
     util.force_install_module(cr, "l10n_it_central_journal_reportlab",
                               if_installed=["l10n_it_central_journal"])
-    util.rename_module(cr, "product_supplierinfo_for_customer", "product_supplierinfo_for_customer")
+    util.rename_module(cr, "product_supplierinfo_for_customer", "product_customerinfo")
     modules_to_uninstall = [
         'l10n_it_central_journal',
         'amazon_settlement_ext_ept',
