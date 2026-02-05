@@ -34,6 +34,7 @@ def migrate(cr, version):
                               if_installed=["l10n_it_central_journal"])
     util.force_install_module(cr, "product_customerinfo", if_installed=["product_supplierinfo_for_customer"])
     util.force_install_module(cr, "l10n_it_edi")
+    util.force_install_module(cr, "l10n_it_edi_oss")
     modules_to_uninstall = [
         'l10n_it_central_journal',
         'amazon_settlement_ext_ept',
