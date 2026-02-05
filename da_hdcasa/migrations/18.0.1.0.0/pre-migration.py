@@ -20,6 +20,7 @@ def migrate(cr, version):
         'transport_carrier_brt.stock_picking_button_brt_form_view',
         'transport_carrier_brt.stock_picking_brt_tree_view_inherit',
         'l10n_it_fatturapa_out.view_invoice_form_fatturapa',
+        'account_debit_note.view_move_form_debit',
     ]
 
     for view in _deleted_xml_records:
