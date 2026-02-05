@@ -19,6 +19,7 @@ def migrate(cr, version):
         'l10n_it_vat_statement_split_payment.view_account_config_settings_inherit',
         'transport_carrier_brt.stock_picking_button_brt_form_view',
         'transport_carrier_brt.stock_picking_brt_tree_view_inherit',
+        'l10n_it_fatturapa_out.view_invoice_form_fatturapa',
     ]
 
     for view in _deleted_xml_records:
