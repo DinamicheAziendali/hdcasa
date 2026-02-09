@@ -68,7 +68,6 @@ class DaXlsxPinto(models.AbstractModel):
                 for move_line in move.move_line_ids:
                     if not writed:
                         writed = True
-                    qty = self.get_qty_move_line(move_line)
                     partner_id = self.get_partner(picking)
                     product_supplier_code = self.get_supplier_code_product(
                         move_line.product_id, picking.partner_id
@@ -84,7 +83,7 @@ class DaXlsxPinto(models.AbstractModel):
                     sheet.write(i, 5, move_line.product_id.barcode, number_style)
                     sheet.write(i, 6, move_line.product_id.display_name, text_style)
                     sheet.write(i, 7, product_supplier_price, monetary_style)
-                    sheet.write(i, 8, qty, number_style)
+                    sheet.write(i, 8, move_line.quantity, number_style)
                     sheet.write(i, 9, move_line.product_uom_id.name, text_style)
                     sheet.write(
                         i, 10, datetime.now().date().strftime("%d/%m/%Y"), text_style
@@ -93,13 +92,6 @@ class DaXlsxPinto(models.AbstractModel):
             if writed:
                 picking.exported_pinto = True
         return i
-
-    def get_qty_move_line(self, move_line):
-        if move_line.qty_done:
-            qty = move_line.qty_done
-        else:
-            qty = move_line.reserved_uom_qty
-        return qty
 
     def get_supplier_code_product(self, product, supplier):
         if product and supplier:
