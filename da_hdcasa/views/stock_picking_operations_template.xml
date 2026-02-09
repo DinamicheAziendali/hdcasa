@@ -29,6 +29,38 @@
                 t-options="{&quot;widget&quot;: &quot;contact&quot;, &quot;fields&quot;: [&quot;address&quot;, &quot;phone&quot;], &quot;no_marker&quot;: True, &quot;phone_icons&quot;: True}"
             />
         </xpath>
+
+        <xpath expr="//div[@name='div_incoming_address']" position="before">
+
+            <div class="col-5 offset-1"
+                 name="div_dropship_address"
+                 t-if="o.picking_type_id.code == 'dropship' and o.partner_id">
+
+                <strong>Supplier Address:</strong>
+                <div class="mt-2">
+                    <div t-esc="o.partner_id.display_name"/>
+                    <div t-esc="o.partner_id.street"/>
+                    <div>
+                        <span t-esc="o.partner_id.zip"/>
+                        <span t-esc="o.partner_id.city"/>
+                    </div>
+                    <div t-esc="o.partner_id.country_id.name"/>
+
+                    <div t-if="o.partner_id.phone">
+                        ☎ <span t-esc="o.partner_id.phone"/>
+                    </div>
+
+                    <div t-if="o.partner_id.vat">
+                        Partita IVA: <span t-esc="o.partner_id.vat"/>
+                    </div>
+                </div>
+            </div>
+
+        </xpath>
+        <xpath expr="//thead/tr/th[@name='th_from']" position="attributes">
+            <attribute name="invisible">1</attribute>
+        </xpath>
+
     </template>
 
     <template
