@@ -60,7 +60,7 @@
         <xpath expr="//thead/tr/th[@name='th_from']" position="attributes">
             <attribute name="style">display: none;</attribute>
         </xpath>
-         <xpath expr="//tbody/tr/td[@t-if=o.picking_type_id.code != 'incoming']" position="attributes">
+        <xpath expr="//tbody/tr/td[@t-if=&quot;o.picking_type_id.code != 'incoming'&quot;]" position="attributes">
             <attribute name="style">display: none;</attribute>
         </xpath>
 
