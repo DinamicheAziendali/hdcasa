@@ -10,7 +10,9 @@
                     t-set="tax_description"
                     t-value="'Aliquota IVA OSS ' + str(oss_tax_data['aliquota_iva']) + '&#37; ' + str(oss_tax_data.get('it_values', {}).get('oss_country_id'))"
                 />
-                <DettaglioLinee t-if="oss_tax_data.get('it_values', {}).get('oss_country_id')">
+                <DettaglioLinee
+                    t-if="oss_tax_data.get('it_values', {}).get('oss_country_id')"
+                >
                     <NumeroLinea t-out="len(record.mapped('invoice_line_ids')) + 1" />
                     <Descrizione t-out="encode_for_export(tax_description, 1000)" />
                     <Quantita>1.00</Quantita>
@@ -38,7 +40,9 @@
                     t-set="tax_description"
                     t-value="'IVA OSS ' + str(oss_tax_data['aliquota_iva']) + '&#37; ' + str(oss_tax_data.get('it_values', {}).get('oss_country_id'))"
                 />
-                <DatiRiepilogo t-if="oss_tax_data.get('it_values', {}).get('oss_country_id')">
+                <DatiRiepilogo
+                    t-if="oss_tax_data.get('it_values', {}).get('oss_country_id')"
+                >
                     <AliquotaIVA>0.00</AliquotaIVA>
                     <Natura>N2.2</Natura>
                     <ImponibileImporto

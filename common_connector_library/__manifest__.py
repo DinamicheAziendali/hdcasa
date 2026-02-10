@@ -6,7 +6,7 @@
     'category': 'Sales',
     'license': 'OPL-1',
     'author': 'Emipro Technologies Pvt. Ltd.',
-    'website': 'http://www.emiprotechnologies.com',
+    'website': 'https://www.dinamicheaziendali.it/',
     'maintainer': 'Emipro Technologies Pvt. Ltd.',
     'summary': """Develop generalize method to process different operations & auto workflow process to manage
     order process automatically.""",

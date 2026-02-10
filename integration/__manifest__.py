@@ -5,7 +5,7 @@
     'version': '18.0.1.19.2',
     'category': 'Sales',
     'author': 'VentorTech',
-    'website': 'https://ventor.tech',
+    'website': 'https://www.dinamicheaziendali.it/',
     'support': 'support@ventor.tech',
     'license': 'OPL-1',
     'price': 50.00,
