@@ -1,7 +1,7 @@
 # Copyright 2025 Andrea Barbato - Dinamiche Aziendali srl
 # License AGPL-3.0 or later (http://www.gnu.org/licenses/agpl.html).
 
-from odoo import api, models
+from odoo import models
 from odoo.tools import float_is_zero
 
 
@@ -22,22 +22,24 @@ class AccountMoveInherit(models.Model):
             )
 
             if vat_tax.oss_country_id:
-                base_line["it_values"]["oss_country_id"] = vat_tax.oss_country_id
-
                 vat_tax_amount = "%.*f" % (
                     2,
                     vat_tax.amount
                     if not float_is_zero(vat_tax.amount, precision_digits=2)
                     else 0.0,
                 )
-                base_line["it_values"]["altri_dati_gestionali_list"].extend(
-                    [
-                        {
-                            "tipo_dato": "OSS",
-                            "riferimento_testo": 'IVA OSS ' + vat_tax_amount + str(vat_tax.oss_country_id.name),
-                            "riferimento_numero": None,
-                            "riferimento_data": None,
-                        },
-                    ]
-                )
+
+                for altri_dati_gestionali in base_line["it_values"][
+                    "altri_dati_gestionali_list"
+                ]:
+                    if altri_dati_gestionali["tipo_dato"] == "OSS":
+                        riferimento_testo = " ".join(
+                            [
+                                "IVA OSS",
+                                vat_tax_amount,
+                                str(vat_tax.oss_country_id.name),
+                            ]
+                        )
+                        altri_dati_gestionali["riferimento_testo"] = riferimento_testo
+                        break
         return res
