@@ -34,5 +34,6 @@
         "views/stock_picking_operations_template.xml",
         "views/purchase_order_view.xml",
     ],
+    "images": ["static/description/icon.png"],
     "installable": True,
 }

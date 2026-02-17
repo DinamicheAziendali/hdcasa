@@ -22,6 +22,6 @@
         "views/stock_picking.xml",
         "reports/report_xlsx_pinto.xml",
     ],
-    "demo": [],
+    "images": ["static/description/icon.png"],
     "installable": True,
 }
