@@ -19,6 +19,7 @@
         "delivery_multi_destination",
         "transport_carrier_base",
         "stock",
+        "stock_dropshipping",
         "sale",
         "account",
         "l10n_it_edi",
