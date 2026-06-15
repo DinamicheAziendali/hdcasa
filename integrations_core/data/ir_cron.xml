@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Azioni pianificate (ir.cron) del connettore BricoBravo. TUTTE DISATTIVE di
+        default (active=False): il codice è pronto e installabile, ma nessun
+        automatismo parte finché non si attiva dalla UI (Impostazioni → Tecnico →
+        Azioni pianificate). I metodi sono orchestratori che riusano la logica già
+        validata (pull/push_shipment/generate_*_feed).
+
+        noupdate="1": le modifiche fatte via UI (frequenza, attivazione) NON vengono
+        sovrascritte agli aggiornamenti del modulo. Sintassi Odoo 18 (no numbercall,
+        no doall): interval_number/interval_type, model_id, state=code, code,
+        user_id, active. I valori qui sono solo i DEFAULT di partenza.
+    -->
+    <data noupdate="1">
+
+        <!-- 1) Pull ordini in entrata (ogni 1 ora di default).
+             Riusa l'orchestratore cron_pull_all_channels: per ogni canale attivo
+             fa pull → import → conferma → acquired (+ retry_pending_acquired). -->
+        <record id="cron_pull_all_channels" model="ir.cron">
+            <field name="name">BricoBravo: pull ordini in entrata</field>
+            <field name="model_id" ref="model_centrivo_channel"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_pull_all_channels()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">hours</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="active" eval="False"/>
+        </record>
+
+        <!-- 2) Push spedizioni (ogni 6 ore di default).
+             Per gli ordini importati con un picking done + carrier_tracking_ref,
+             comunica corriere/tracking. NB: operativo solo quando ShipTracker
+             popolerà carrier_tracking_ref (non ancora integrato). -->
+        <record id="cron_push_shipments" model="ir.cron">
+            <field name="name">BricoBravo: push spedizioni</field>
+            <field name="model_id" ref="model_centrivo_channel"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_push_shipments()</field>
+            <field name="interval_number">6</field>
+            <field name="interval_type">hours</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="active" eval="False"/>
+        </record>
+
+        <!-- 3) Feed prezzi/giacenze (ogni 30 minuti di default). -->
+        <record id="cron_generate_stock_feeds" model="ir.cron">
+            <field name="name">BricoBravo: genera feed prezzi/giacenze</field>
+            <field name="model_id" ref="model_centrivo_channel"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_generate_stock_feeds()</field>
+            <field name="interval_number">30</field>
+            <field name="interval_type">minutes</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="active" eval="False"/>
+        </record>
+
+        <!-- 4) Feed catalogo completo (ogni 12 ore di default: cambia meno spesso). -->
+        <record id="cron_generate_catalog_feeds" model="ir.cron">
+            <field name="name">BricoBravo: genera feed catalogo</field>
+            <field name="model_id" ref="model_centrivo_channel"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_generate_catalog_feeds()</field>
+            <field name="interval_number">12</field>
+            <field name="interval_type">hours</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="active" eval="False"/>
+        </record>
+
+    </data>
+</odoo>

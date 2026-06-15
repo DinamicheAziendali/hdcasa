@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_integration_carrier_map_list" model="ir.ui.view">
+        <field name="name">centrivo.carrier.map.list</field>
+        <field name="model">centrivo.carrier.map</field>
+        <field name="arch" type="xml">
+            <list string="Mapping Corrieri">
+                <field name="channel_id"/>
+                <field name="carrier_id"/>
+                <field name="external_code"/>
+                <field name="tracking_url_template"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_integration_carrier_map_form" model="ir.ui.view">
+        <field name="name">centrivo.carrier.map.form</field>
+        <field name="model">centrivo.carrier.map</field>
+        <field name="arch" type="xml">
+            <form string="Mapping Corriere">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="channel_id"/>
+                            <field name="carrier_id"/>
+                            <field name="external_code"/>
+                        </group>
+                        <group>
+                            <field name="tracking_url_template"
+                                   placeholder="https://vivi.brt.it/?tracking={tracking}"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                    </group>
+                    <p class="text-muted">
+                        Il <strong>Codice corriere marketplace</strong> mostra solo i
+                        codici ammessi dal connettore del canale selezionato. Il
+                        <strong>Template URL</strong> deve contenere il segnaposto
+                        <code>{tracking}</code>, che verrà sostituito dal numero di
+                        tracking al momento del push.
+                    </p>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_integration_carrier_map" model="ir.actions.act_window">
+        <field name="name">Mapping Corrieri</field>
+        <field name="res_model">centrivo.carrier.map</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

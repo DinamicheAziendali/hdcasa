@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Record rules multi-AZIENDA (company_id) sui modelli del connettore.
+
+        NON è multi-tenant infrastrutturale: è la separazione company_id standard
+        di Odoo all'interno della STESSA istanza. Ogni record è visibile solo agli
+        utenti delle company a cui appartiene (oppure se company_id è vuoto, per
+        retro-compatibilità con eventuali record condivisi).
+
+        Pattern Odoo standard: rule GLOBALE (global=True) con domain
+        ['|', ('company_id','=',False), ('company_id','in',company_ids)].
+        `company_ids` = le company selezionate/consentite dell'utente.
+
+        NB BACKFILL: i record preesistenti senza company_id vengono allineati
+        all'azienda principale dalla migrazione (migrations/18.0.1.1.0/post-migrate.py),
+        così non spariscono dalla vista all'attivazione delle rules.
+    -->
+
+    <record id="integration_channel_company_rule" model="ir.rule">
+        <field name="name">centrivo.channel multi-company</field>
+        <field name="model_id" ref="model_centrivo_channel"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="integration_order_map_company_rule" model="ir.rule">
+        <field name="name">centrivo.order.map multi-company</field>
+        <field name="model_id" ref="model_centrivo_order_map"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="integration_sku_map_company_rule" model="ir.rule">
+        <field name="name">centrivo.sku.map multi-company</field>
+        <field name="model_id" ref="model_centrivo_sku_map"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="integration_carrier_map_company_rule" model="ir.rule">
+        <field name="name">centrivo.carrier.map multi-company</field>
+        <field name="model_id" ref="model_centrivo_carrier_map"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="integration_job_log_company_rule" model="ir.rule">
+        <field name="name">centrivo.job.log multi-company</field>
+        <field name="model_id" ref="model_centrivo_job_log"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+</odoo>

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_integration_job_log_list" model="ir.ui.view">
+        <field name="name">centrivo.job.log.list</field>
+        <field name="model">centrivo.job.log</field>
+        <field name="arch" type="xml">
+            <list string="Log operazioni" create="false">
+                <field name="create_date"/>
+                <field name="channel_id"/>
+                <field name="operation"/>
+                <field name="external_id"/>
+                <field name="result"
+                       decoration-success="result == 'success'"
+                       decoration-danger="result == 'error'"
+                       decoration-muted="result == 'skip'"/>
+                <field name="message"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_integration_job_log_form" model="ir.ui.view">
+        <field name="name">centrivo.job.log.form</field>
+        <field name="model">centrivo.job.log</field>
+        <field name="arch" type="xml">
+            <form string="Log operazione">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="channel_id"/>
+                            <field name="operation"/>
+                            <field name="external_id"/>
+                        </group>
+                        <group>
+                            <field name="result"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                    </group>
+                    <group string="Messaggio">
+                        <field name="message" nolabel="1"/>
+                    </group>
+                    <group string="Payload (troncato)">
+                        <field name="payload" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_integration_job_log" model="ir.actions.act_window">
+        <field name="name">Log operazioni</field>
+        <field name="res_model">centrivo.job.log</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

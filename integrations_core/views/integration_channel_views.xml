@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Vista lista canali -->
+    <record id="view_integration_channel_list" model="ir.ui.view">
+        <field name="name">centrivo.channel.list</field>
+        <field name="model">centrivo.channel</field>
+        <field name="arch" type="xml">
+            <list string="Canali">
+                <field name="name"/>
+                <field name="connector_code"/>
+                <field name="environment"/>
+                <field name="active"/>
+                <field name="last_pull"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Vista form canale -->
+    <record id="view_integration_channel_form" model="ir.ui.view">
+        <field name="name">centrivo.channel.form</field>
+        <field name="model">centrivo.channel</field>
+        <field name="arch" type="xml">
+            <form string="Canale">
+                <header>
+                    <button name="action_pull_orders" type="object"
+                            string="Scarica ordini" class="btn-primary"/>
+                </header>
+                <sheet>
+                    <!-- Parte alta: SOLO identità del canale e credenziali.
+                         La configurazione operativa sta nel tab "Impostazioni". -->
+                    <group>
+                        <group string="Identità">
+                            <field name="name"/>
+                            <field name="connector_code"/>
+                            <field name="environment"/>
+                            <field name="active"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                        <group string="Credenziali">
+                            <field name="api_key" password="True"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <!-- Tab Impostazioni: opzioni operative del connettore. -->
+                        <page string="Impostazioni" name="settings">
+                            <group>
+                                <group string="Connessione">
+                                    <field name="base_url"/>
+                                </group>
+                                <group string="Import ordini">
+                                    <field name="confirm_on_import"/>
+                                </group>
+                            </group>
+                        </page>
+                        <!-- Tab Export: feed prezzi/giacenze via URL pubblico. -->
+                        <page string="Export" name="export">
+                            <div class="mb-3">
+                                <button name="action_generate_stock_feed" type="object"
+                                        string="Genera feed prezzi/giacenze ora"
+                                        class="btn-primary"/>
+                                <button name="action_regenerate_export_token" type="object"
+                                        string="Rigenera token"
+                                        class="btn-secondary ms-2"
+                                        confirm="Rigenerare il token invalida gli URL del feed già distribuiti. Continuare?"/>
+                            </div>
+                            <group>
+                                <group string="Listini">
+                                    <field name="pricelist_selling_id"/>
+                                    <field name="pricelist_discounted_id"/>
+                                </group>
+                                <group string="Selezione prodotti">
+                                    <field name="export_product_tag_ids"
+                                           widget="many2many_tags"/>
+                                    <field name="processing_time_default"/>
+                                </group>
+                            </group>
+                            <group>
+                                <group string="Quantità">
+                                    <field name="stock_quantity_type"/>
+                                    <field name="stock_scope"/>
+                                    <field name="warehouse_ids"
+                                           widget="many2many_tags"
+                                           invisible="stock_scope != 'warehouses'"
+                                           required="stock_scope == 'warehouses'"/>
+                                </group>
+                                <group string="Feed">
+                                    <field name="export_token" readonly="1"/>
+                                    <field name="stock_feed_generated_at" readonly="1"/>
+                                </group>
+                            </group>
+                            <group string="URL dei feed (da incollare su BricoBravo)">
+                                <field name="stock_feed_url" readonly="1"
+                                       widget="CopyClipboardChar"/>
+                                <field name="catalog_feed_url" readonly="1"
+                                       widget="CopyClipboardChar"/>
+                            </group>
+                            <p class="text-muted">
+                                Incolla questi URL nel pannello BricoBravo (uno per
+                                feed). Gli URL contengono il token: se rigeneri il
+                                token vanno re-incollati. Gli URL delle immagini del
+                                catalogo sono generati automaticamente dentro il feed
+                                catalogo (uno per immagine), non vanno copiati a mano.
+                            </p>
+                        </page>
+                        <!-- Tab Mapping catalogo: feed catalogo completo (23 colonne). -->
+                        <page string="Mapping catalogo" name="catalog">
+                            <div class="mb-3">
+                                <button name="action_generate_catalog_feed" type="object"
+                                        string="Genera feed catalogo ora"
+                                        class="btn-primary"/>
+                            </div>
+                            <group>
+                                <group string="Mappatura colonne">
+                                    <field name="map_field_name"/>
+                                    <field name="map_field_category"/>
+                                    <field name="map_field_url"/>
+                                    <field name="map_field_description"/>
+                                </group>
+                                <group string="Brand e IVA">
+                                    <field name="use_product_brand"/>
+                                    <field name="vat_default"/>
+                                </group>
+                            </group>
+                            <group>
+                                <group string="Feed catalogo">
+                                    <field name="catalog_feed_generated_at" readonly="1"/>
+                                </group>
+                            </group>
+                            <p class="text-muted">
+                                Le colonne non mappate escono vuote (nessun errore).
+                                Le immagini sono pubblicate come URL costruiti dai blob
+                                nativi Odoo (immagine principale + galleria
+                                product.image), su web.base.url: gli URL /web/image/...
+                                devono essere raggiungibili pubblicamente (senza login).
+                                Brand (OCA product_brand) è opzionale: se il modulo non
+                                è presente, la colonna resta vuota.
+                            </p>
+                        </page>
+                        <page string="Statistiche" name="stats">
+                            <group>
+                                <field name="order_map_count"/>
+                                <field name="job_log_count"/>
+                                <field name="last_pull"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_integration_channel" model="ir.actions.act_window">
+        <field name="name">Canali</field>
+        <field name="res_model">centrivo.channel</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

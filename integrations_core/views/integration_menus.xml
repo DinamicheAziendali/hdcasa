@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Menu radice "Integrations" -->
+    <menuitem id="menu_integrations_root"
+              name="Integrations"
+              sequence="90"/>
+
+    <menuitem id="menu_integration_channel"
+              name="Canali"
+              parent="menu_integrations_root"
+              action="action_integration_channel"
+              sequence="10"/>
+
+    <menuitem id="menu_integration_order_map"
+              name="Ordini importati"
+              parent="menu_integrations_root"
+              action="action_integration_order_map"
+              sequence="20"/>
+
+    <menuitem id="menu_integration_sku_map"
+              name="Mapping SKU"
+              parent="menu_integrations_root"
+              action="action_integration_sku_map"
+              sequence="30"/>
+
+    <menuitem id="menu_integration_carrier_map"
+              name="Mapping Corrieri"
+              parent="menu_integrations_root"
+              action="action_integration_carrier_map"
+              sequence="35"/>
+
+    <menuitem id="menu_integration_job_log"
+              name="Log operazioni"
+              parent="menu_integrations_root"
+              action="action_integration_job_log"
+              sequence="40"/>
+</odoo>

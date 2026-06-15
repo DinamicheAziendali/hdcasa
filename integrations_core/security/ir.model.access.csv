@@ -1,0 +1,6 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_integration_channel_user,centrivo.channel user,model_centrivo_channel,base.group_user,1,1,1,1
+access_integration_order_map_user,centrivo.order.map user,model_centrivo_order_map,base.group_user,1,1,1,1
+access_integration_sku_map_user,centrivo.sku.map user,model_centrivo_sku_map,base.group_user,1,1,1,1
+access_integration_carrier_map_user,centrivo.carrier.map user,model_centrivo_carrier_map,base.group_user,1,1,1,1
+access_integration_job_log_user,centrivo.job.log user,model_centrivo_job_log,base.group_user,1,1,1,1

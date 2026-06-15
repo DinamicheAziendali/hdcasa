@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_integration_order_map_list" model="ir.ui.view">
+        <field name="name">centrivo.order.map.list</field>
+        <field name="model">centrivo.order.map</field>
+        <field name="arch" type="xml">
+            <list string="Ordini importati" create="false">
+                <field name="create_date"/>
+                <field name="channel_id"/>
+                <field name="external_id"/>
+                <field name="sale_order_id"/>
+                <field name="state"
+                       decoration-success="state == 'imported'"
+                       decoration-danger="state == 'error'"
+                       decoration-muted="state == 'pending'"/>
+                <field name="acquired_done"
+                       decoration-success="acquired_done == True"
+                       decoration-warning="state == 'imported' and acquired_done == False"/>
+                <field name="shipment_pushed"
+                       decoration-success="shipment_pushed == True"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_integration_order_map_form" model="ir.ui.view">
+        <field name="name">centrivo.order.map.form</field>
+        <field name="model">centrivo.order.map</field>
+        <field name="arch" type="xml">
+            <form string="Ordine importato">
+                <header>
+                    <!-- Trigger MANUALE Strato 3b: abilitato solo se l'ordine è
+                         importato e la spedizione non è ancora stata comunicata. -->
+                    <button name="action_push_shipment" type="object"
+                            string="Push spedizione a BricoBravo"
+                            class="btn-primary"
+                            invisible="state != 'imported' or shipment_pushed"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="channel_id"/>
+                            <field name="external_id"/>
+                            <field name="state"/>
+                        </group>
+                        <group>
+                            <field name="sale_order_id"/>
+                            <field name="acquired_done"/>
+                            <field name="shipment_pushed"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                    </group>
+                    <group string="Errore">
+                        <field name="error_message" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_integration_order_map" model="ir.actions.act_window">
+        <field name="name">Ordini importati</field>
+        <field name="res_model">centrivo.order.map</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <!-- Azione server: push spedizione su più ordini selezionati dalla lista
+         (menu Azioni). Trigger MANUALE, nessun automatismo. -->
+    <record id="action_server_push_shipment" model="ir.actions.server">
+        <field name="name">Push spedizione a BricoBravo</field>
+        <field name="model_id" ref="model_centrivo_order_map"/>
+        <field name="binding_model_id" ref="model_centrivo_order_map"/>
+        <field name="binding_view_types">list,form</field>
+        <field name="state">code</field>
+        <field name="code">records.action_push_shipment()</field>
+    </record>
+</odoo>
