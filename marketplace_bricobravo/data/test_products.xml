@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- ============================================================== -->
+    <!-- PRODOTTI DI TEST per validare l'import ordini su STAGE.         -->
+    <!--                                                                 -->
+    <!-- Server action RICHIAMABILE A MANO (NON viene eseguita in        -->
+    <!-- automatico all'installazione/aggiornamento: il record qui sotto -->
+    <!-- definisce soltanto l'azione). Crea prodotti con gli EAN         -->
+    <!-- realmente usati dalla sandbox BricoBravo, marcati "- TEST".     -->
+    <!--                                                                 -->
+    <!-- Come ESEGUIRLA: Impostazioni → Tecnico → Azioni → Azioni server -->
+    <!--   → "BricoBravo: crea prodotti di test" → pulsante "Esegui".    -->
+    <!-- Oppure via shell:                                               -->
+    <!--   env.ref('marketplace_bricobravo.action_create_test_products').run() -->
+    <!--                                                                 -->
+    <!-- Come RIMUOVERLI: cancellare i prodotti con "- TEST" nel nome    -->
+    <!--   (default_code che inizia per TEST-). Vanno sostituiti dal     -->
+    <!--   catalogo vero quando arriverà.                                -->
+    <!-- ============================================================== -->
+    <record id="action_create_test_products" model="ir.actions.server">
+        <field name="name">BricoBravo: crea prodotti di test</field>
+        <field name="model_id" ref="product.model_product_template"/>
+        <field name="state">code</field>
+        <field name="code"><![CDATA[
+# Crea i prodotti di test SOLO se non esistono già (idempotente).
+Product = env['product.product']
+test_products = [
+    {
+        'name': 'Set 4 Sedie trasparenti - TEST',
+        'barcode': '8056157802747',
+        'default_code': 'TEST-SEDIE-4',
+        'list_price': 99.0,
+    },
+]
+created = []
+for t in test_products:
+    if not Product.search([('barcode', '=', t['barcode'])], limit=1):
+        Product.create({
+            'name': t['name'],
+            'barcode': t['barcode'],
+            'default_code': t['default_code'],
+            'list_price': t['list_price'],
+            'type': 'consu',
+            'sale_ok': True,
+        })
+        created.append(t['barcode'])
+log("BricoBravo prodotti di test creati: %s" % (created or 'nessuno (già presenti)'))
+]]></field>
+    </record>
+</odoo>
