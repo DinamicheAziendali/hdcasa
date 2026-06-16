@@ -396,9 +396,12 @@ class BricoBravoConnector(MarketplaceConnector):
         # genererebbe un sale.order duplicato ad ogni pull.
         status = external_order.get("status")
         status_label = BRICOBRAVO_STATUS_MAP.get(status, "sconosciuto")
-        # Riferimento origine per tracciabilità (id + vtex).
-        ref = "BricoBravo #%s%s" % (
-            external_id, " (%s)" % vtex_id if vtex_id else "")
+        # Riferimento origine per tracciabilità: numero COMMERCIALE del
+        # marketplace (vtex_id_order, es. "BB920352542-F1") per primo, id TECNICO
+        # (id_order, es. "449023") tra parentesi col prefisso "#" →
+        # "BB920352542-F1 (#449023)". La parola "BricoBravo" è rimossa (ridondante:
+        # lo indica il team di vendita del canale). Robusto se uno dei due manca.
+        ref = self._compose_order_ref(vtex_id, external_id)
         sale_order = existing.sale_order_id if (existing and existing.sale_order_id) \
             else False
         if not sale_order:
@@ -413,6 +416,11 @@ class BricoBravoConnector(MarketplaceConnector):
                     "note": "Stato BricoBravo: %s (%s)" % (status, status_label),
                     "order_line": order_lines,
                 }
+                # Team di vendita del canale (opzionale, campo nativo sale.order):
+                # se il canale ha team_id valorizzato lo assegniamo; altrimenti
+                # l'ordine entra senza team (comportamento Odoo standard).
+                if channel.team_id:
+                    order_vals["team_id"] = channel.team_id.id
                 sale_order = env["sale.order"].with_company(company).create(order_vals)
             except Exception as exc:  # noqa: BLE001
                 self._record_order_error(external_id, "Errore creazione ordine: %s" % exc)
@@ -1207,6 +1215,26 @@ class BricoBravoConnector(MarketplaceConnector):
 
         # d) Non trovato: ritorna la diagnostica per il log.
         return False, "; ".join(diag)
+
+    def _compose_order_ref(self, commercial_number, technical_id):
+        """Compone il client_order_ref: "BB920352542-F1 (#449023)".
+
+        Formato: numero COMMERCIALE del marketplace (vtex_id_order) per primo,
+        id TECNICO (id_order) tra parentesi col prefisso "#". La parola
+        "BricoBravo" NON viene messa (ridondante: lo indica il team di vendita).
+
+        Robustezza (uno dei due valori può mancare nel payload):
+          - entrambi presenti → "BB920352542-F1 (#449023)";
+          - solo commerciale  → "BB920352542-F1";
+          - solo tecnico      → "#449023";
+          - nessuno dei due   → "" (caso limite: l'import si blocca prima, perché
+            external_id è obbligatorio).
+        """
+        commercial = str(commercial_number).strip() if commercial_number else ""
+        technical = ("#%s" % technical_id) if technical_id else ""
+        if commercial and technical:
+            return "%s (%s)" % (commercial, technical)
+        return commercial or technical
 
     def _norm(self, value):
         """Normalizza un codice (ean/product_code) a stringa stripped o None.
