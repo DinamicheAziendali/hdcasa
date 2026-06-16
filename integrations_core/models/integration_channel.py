@@ -53,6 +53,17 @@ class IntegrationChannel(models.Model):
              "(action_confirm): gli ordini marketplace sono già pagati. Se "
              "disattivo, l'ordine resta in bozza (quotation).")
 
+    # Team di vendita opzionale: se valorizzato, gli ordini importati da questo
+    # canale vengono assegnati a questo crm.team (campo nativo sale.order.team_id).
+    # Se vuoto, l'ordine entra senza team (comportamento Odoo standard). Il team
+    # NON viene creato dal connettore: si sceglie tra i crm.team esistenti.
+    team_id = fields.Many2one(
+        "crm.team", string="Team di vendita",
+        help="Team di vendita (opzionale) a cui vengono assegnati gli ordini "
+             "importati da questo canale. Se vuoto, l'ordine entra senza team "
+             "(comportamento standard). Seleziona un team esistente: il "
+             "connettore non lo crea.")
+
     # Credenziale: SOLO il campo, mai il valore nel codice. Va inserita qui
     # nell'istanza (o iniettata in ambiente). La chiave reale è fornita
     # separatamente, non versionata.

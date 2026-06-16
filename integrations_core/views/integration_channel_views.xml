@@ -50,6 +50,7 @@
                                 </group>
                                 <group string="Import ordini">
                                     <field name="confirm_on_import"/>
+                                    <field name="team_id"/>
                                 </group>
                             </group>
                         </page>
