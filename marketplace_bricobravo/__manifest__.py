@@ -19,7 +19,7 @@
 #         Discounted Price; Vat; Available Quantity; Processing Time; Product_Code.
 {
     "name": "Marketplace - BricoBravo",
-    "version": "18.0.2.1.0",
+    "version": "18.0.2.2.0",
     "license": "OPL-1",
     "category": "Connector",
     "summary": "Connettore BricoBravo (API REST) su integrations_core: import ordini, conferma, acquisizione e comunicazione spedizione.",

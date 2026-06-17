@@ -1284,36 +1284,40 @@ class BricoBravoConnector(MarketplaceConnector):
         name = self._compose_name(ship) or self._compose_name(info) \
             or "Cliente BricoBravo"
 
-        # TASK_14 — email/telefono: nel payload reale sono a livello ORDINE
-        # (customer_first_email / customer_first_phone), non in shipping_info.
-        # Manteniamo fallback su ship/info per robustezza.
+        # TASK_48 — email/cellulare: nel payload REALE di produzione stanno DENTRO
+        # shipping_info (customer_first_email / customer_first_phone). Catena di
+        # fallback: prima shipping_info, poi livello ordine (ordini storici/sandbox),
+        # infine i vecchi campi email/phone di ship/info per robustezza.
         email = _clean(
-            external_order.get("customer_first_email")
+            ship.get("customer_first_email")
+            or external_order.get("customer_first_email")
             or ship.get("email") or info.get("email"))
-        # Il telefono in sandbox può essere mascherato (es. "+3933xxxxx"): lo
-        # salviamo COMUNQUE così com'è (in produzione sarà reale), senza errori.
-        phone = _clean(
-            external_order.get("customer_first_phone")
+        # Il numero cliente di BricoBravo è un CELLULARE → va sul campo `mobile` di
+        # res.partner (NON `phone`). L'alias/mascheramento del marketplace è valido
+        # e si salva COSÌ COM'È (in produzione è reale), senza scarti né errori.
+        mobile = _clean(
+            ship.get("customer_first_phone")
+            or external_order.get("customer_first_phone")
             or ship.get("phone") or ship.get("telephone"))
         city = _clean(ship.get("city"))
         vat = info.get("vat_code")
 
         # --- Dedup partner (logica semplice, documentata) ------------------
-        # Se troviamo un partner esistente, RIEMPIamo email/telefono SOLO se
+        # Se troviamo un partner esistente, RIEMPIamo email/cellulare SOLO se
         # mancanti (non sovrascriviamo dati esistenti con valori sandbox/mascherati).
         if vat:
             partner = Partner.search([("vat", "=", vat)], limit=1)
             if partner:
-                return self._fill_contact_if_empty(partner, email, phone)
+                return self._fill_contact_if_empty(partner, email, mobile)
         if email:
             partner = Partner.search([("email", "=", email)], limit=1)
             if partner:
-                return self._fill_contact_if_empty(partner, email, phone)
+                return self._fill_contact_if_empty(partner, email, mobile)
         if name and city:
             partner = Partner.search(
                 [("name", "=", name), ("city", "=", city)], limit=1)
             if partner:
-                return self._fill_contact_if_empty(partner, email, phone)
+                return self._fill_contact_if_empty(partner, email, mobile)
 
         # --- Creazione nuovo partner (con indirizzo da shipping_info) ------
         vals = {
@@ -1321,7 +1325,7 @@ class BricoBravoConnector(MarketplaceConnector):
             "company_type": "company" if info.get("is_corporate") else "person",
             "vat": vat or False,
             "email": email or False,
-            "phone": phone or False,
+            "mobile": mobile or False,
             "company_id": self.channel.company_id.id,
         }
         vals.update(self._address_vals(ship))
@@ -1337,17 +1341,18 @@ class BricoBravoConnector(MarketplaceConnector):
                                info.get("send_invoice_to"))
         return Partner.create(vals)
 
-    def _fill_contact_if_empty(self, partner, email, phone):
-        """Riempie email/telefono su un partner esistente SOLO se mancanti.
+    def _fill_contact_if_empty(self, partner, email, mobile):
+        """Riempie email/cellulare su un partner esistente SOLO se mancanti.
 
         Non sovrascrive dati già presenti (evita di rimpiazzare un valore reale
-        con uno sandbox/mascherato). Ritorna il partner.
+        con uno sandbox/mascherato). Il cellulare va sul campo `mobile` (NON
+        `phone`). Ritorna il partner.
         """
         updates = {}
         if email and not partner.email:
             updates["email"] = email
-        if phone and not partner.phone:
-            updates["phone"] = phone
+        if mobile and not partner.mobile:
+            updates["mobile"] = mobile
         if updates:
             partner.write(updates)
         return partner
