@@ -1267,6 +1267,30 @@ class BricoBravoConnector(MarketplaceConnector):
             source.get("first_name") or "", source.get("last_name") or ""))
         return full
 
+    def _extract_contact(self, external_order):
+        """Ritorna (email, cellulare) dell'ordine con la catena di fallback di TASK_48.
+
+        Nel payload REALE di produzione email/cellulare stanno DENTRO shipping_info
+        (customer_first_email / customer_first_phone). Precedenza:
+          (a) shipping_info.customer_first_* (formato produzione) →
+          (b) order.customer_first_* (ordini storici/sandbox a livello radice) →
+          (c) vecchi campi email/phone/telephone di ship/info (robustezza residua).
+        Il numero cliente BricoBravo è un CELLULARE → la seconda voce è destinata al
+        campo `mobile` (NON `phone`). Helper CONDIVISO tra partner principale e
+        indirizzo di consegna: una sola logica di parsing, nessuna duplicazione.
+        """
+        ship = external_order.get("shipping_info") or {}
+        info = external_order.get("invoice_info") or {}  # può essere null
+        email = _clean(
+            ship.get("customer_first_email")
+            or external_order.get("customer_first_email")
+            or ship.get("email") or info.get("email"))
+        mobile = _clean(
+            ship.get("customer_first_phone")
+            or external_order.get("customer_first_phone")
+            or ship.get("phone") or ship.get("telephone"))
+        return email, mobile
+
     def _find_or_create_partner(self, external_order):
         """Trova o crea il res.partner. Fonte principale: shipping_info.
 
@@ -1284,21 +1308,11 @@ class BricoBravoConnector(MarketplaceConnector):
         name = self._compose_name(ship) or self._compose_name(info) \
             or "Cliente BricoBravo"
 
-        # TASK_48 — email/cellulare: nel payload REALE di produzione stanno DENTRO
-        # shipping_info (customer_first_email / customer_first_phone). Catena di
-        # fallback: prima shipping_info, poi livello ordine (ordini storici/sandbox),
-        # infine i vecchi campi email/phone di ship/info per robustezza.
-        email = _clean(
-            ship.get("customer_first_email")
-            or external_order.get("customer_first_email")
-            or ship.get("email") or info.get("email"))
-        # Il numero cliente di BricoBravo è un CELLULARE → va sul campo `mobile` di
-        # res.partner (NON `phone`). L'alias/mascheramento del marketplace è valido
-        # e si salva COSÌ COM'È (in produzione è reale), senza scarti né errori.
-        mobile = _clean(
-            ship.get("customer_first_phone")
-            or external_order.get("customer_first_phone")
-            or ship.get("phone") or ship.get("telephone"))
+        # TASK_48/60 — email/cellulare letti con la catena di fallback condivisa
+        # (_extract_contact): valgono SIA per il partner principale (qui) SIA per
+        # l'indirizzo di consegna (vedi _find_or_create_shipping). Stessa logica,
+        # nessuna duplicazione del parsing.
+        email, mobile = self._extract_contact(external_order)
         city = _clean(ship.get("city"))
         vat = info.get("vat_code")
 
@@ -1358,20 +1372,53 @@ class BricoBravoConnector(MarketplaceConnector):
         return partner
 
     def _find_or_create_shipping(self, external_order, parent_partner):
-        """Crea l'indirizzo di spedizione da shipping_info (type=delivery)."""
+        """Crea l'indirizzo di spedizione da shipping_info (type=delivery).
+
+        TASK_60 — l'indirizzo di consegna è il destinatario reale della spedizione
+        (da cui partiranno tracking e reclami): vi si scrivono anche email e
+        cellulare, con la STESSA logica del partner principale (_extract_contact).
+        email → `email`, cellulare → `mobile` (NON `phone`). L'indirizzo viene SEMPRE
+        creato ex novo qui (nessun recupero), quindi i campi entrano nei vals di
+        create: la regola "non sovrascrivere" è intrinsecamente rispettata (record
+        nuovo). Dato assente nel payload → campo a False, NON bloccante.
+
+        TASK_61 — vi si scrive anche la NOTA DI CONSEGNA (istruzioni del cliente) in
+        `street2`, da `shipping_info.complement` (+ neighborhood/reference se presenti).
+        Vedi _compose_delivery_note. Nota assente → street2 a False.
+        """
         Partner = self.env["res.partner"]
         ship = external_order.get("shipping_info") or {}
         if not ship:
             return False
+        email, mobile = self._extract_contact(external_order)
         vals = {
             "name": self._compose_name(ship) or parent_partner.name,
             "type": "delivery",
             "parent_id": parent_partner.id,
+            "email": email or False,
+            "mobile": mobile or False,
             "phone": _clean(ship.get("phone") or ship.get("telephone")) or False,
+            "street2": self._compose_delivery_note(ship) or False,
             "company_id": self.channel.company_id.id,
         }
         vals.update(self._address_vals(ship))
         return Partner.create(vals)
+
+    def _compose_delivery_note(self, ship):
+        """Nota di consegna (istruzioni del cliente) → street2 dell'indirizzo (TASK_61).
+
+        Fonte principale: shipping_info.complement (istruzioni operative critiche, es.
+        "se non ci sono consegnare in Macelleria..."). Arricchimento opzionale: se
+        presenti, si accodano neighborhood e reference uniti da " - " (nessun campo
+        nuovo). Tutto ripulito con _clean (BricoBravo manda spazi finali); valori
+        assenti/null → ignorati. Stringa vuota se non c'è nulla da scrivere.
+        """
+        parts = [
+            _clean(ship.get("complement")),
+            _clean(ship.get("neighborhood")),
+            _clean(ship.get("reference")),
+        ]
+        return " - ".join(p for p in parts if p)
 
     def _address_vals(self, ship):
         """Estrae i campi indirizzo da shipping_info, con pulizia.
