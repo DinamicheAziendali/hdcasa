@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Record SINGLETON di configurazione tracking. Seminato con un external id
+        stabile così la voce di menu "Impostazioni tracking" può aprirlo
+        direttamente (act_window con res_id), invece di passare da una server
+        action (che come voce di menu non sempre si comporta in modo affidabile).
+
+        noupdate="1": non sovrascrive la scelta del campo sorgente fatta dall'utente
+        agli aggiornamenti del modulo.
+    -->
+    <data noupdate="1">
+        <record id="centrivo_tracking_config_singleton" model="centrivo.tracking.config">
+            <field name="name">Configurazione tracking</field>
+        </record>
+
+        <!--
+            URL del Centrivo License Server (FASE 1: registrazione best-effort).
+            Seminato qui così è visibile/modificabile da Impostazioni → Tecnico →
+            Parametri di sistema se il dominio cambia. noupdate="1": gli aggiornamenti
+            del modulo non sovrascrivono un eventuale URL personalizzato. Se il
+            parametro venisse cancellato, il client (centrivo.license) usa comunque il
+            default cablato (https://license.centrivo.app/register).
+        -->
+        <record id="param_centrivo_license_server_url" model="ir.config_parameter">
+            <field name="key">centrivo.license.server_url</field>
+            <field name="value">https://license.centrivo.app/register</field>
+        </record>
+    </data>
+</odoo>

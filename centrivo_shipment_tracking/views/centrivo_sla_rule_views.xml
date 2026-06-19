@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_centrivo_sla_rule_list" model="ir.ui.view">
+        <field name="name">centrivo.sla.rule.list</field>
+        <field name="model">centrivo.sla.rule</field>
+        <field name="arch" type="xml">
+            <list string="Regole SLA">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="threshold_type"/>
+                <field name="tracker_code" optional="show"/>
+                <field name="zone_id" optional="show"/>
+                <field name="duration_hours"/>
+                <field name="suggest_claim" optional="show"/>
+                <field name="active" optional="hide"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_centrivo_sla_rule_form" model="ir.ui.view">
+        <field name="name">centrivo.sla.rule.form</field>
+        <field name="model">centrivo.sla.rule</field>
+        <field name="arch" type="xml">
+            <form string="Regola SLA">
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name"
+                                   placeholder="Es. Consegna oltre atteso – GLS – Isole – 72h"/></h1>
+                    </div>
+                    <group>
+                        <group string="Ambito di applicazione">
+                            <field name="tracker_code"
+                                   placeholder="Tutti i corrieri"/>
+                            <field name="zone_id" options="{'no_create': True}"
+                                   placeholder="Tutte le zone"/>
+                        </group>
+                        <group string="Soglia">
+                            <field name="threshold_type"/>
+                            <field name="duration_hours"/>
+                            <field name="suggest_claim"/>
+                        </group>
+                    </group>
+                    <group string="Notifica">
+                        <field name="user_ids" widget="many2many_tags"
+                               options="{'no_create': True}"/>
+                    </group>
+                    <group string="Generale">
+                        <field name="sequence"/>
+                        <field name="active"/>
+                        <field name="company_id"
+                               groups="base.group_multi_company"/>
+                    </group>
+                    <p class="text-muted">
+                        Le regole si applicano per <strong>corriere × zona</strong>
+                        con risoluzione per specificità: (corriere+zona) &gt;
+                        (corriere) &gt; (zona) &gt; (globale). Lasciare vuoto il
+                        corriere e/o la zona allarga l'ambito. La durata è
+                        <strong>sempre in ore</strong>. Punto di partenza del
+                        conteggio per tipo: <em>mancata presa in carico</em> dalla
+                        validazione del picking; <em>consegna oltre atteso</em> dalla
+                        prima lettura effettiva (i pre-advice non contano);
+                        <em>staleness</em> dall'ultimo evento ricevuto.
+                    </p>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_centrivo_sla_rule_search" model="ir.ui.view">
+        <field name="name">centrivo.sla.rule.search</field>
+        <field name="model">centrivo.sla.rule</field>
+        <field name="arch" type="xml">
+            <search string="Regole SLA">
+                <field name="name"/>
+                <field name="tracker_code"/>
+                <field name="zone_id"/>
+                <filter name="inactive" string="Archiviate"
+                        domain="[('active', '=', False)]"/>
+                <group expand="0" string="Raggruppa per">
+                    <filter name="group_threshold" string="Tipo di soglia"
+                            context="{'group_by': 'threshold_type'}"/>
+                    <filter name="group_zone" string="Zona"
+                            context="{'group_by': 'zone_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_centrivo_sla_rule" model="ir.actions.act_window">
+        <field name="name">Regole SLA</field>
+        <field name="res_model">centrivo.sla.rule</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_centrivo_sla_rule_search"/>
+    </record>
+</odoo>

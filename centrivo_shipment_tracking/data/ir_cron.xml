@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Cron del polling adattivo. Nasce DISATTIVO (active=False): il codice è
+        pronto, ma nessun automatismo parte finché non si attiva dalla UI
+        (Impostazioni → Tecnico → Azioni pianificate). La cadenza per stato è
+        gestita DENTRO il metodo (centrivo.shipment.status.polling_hours): il cron
+        gira spesso (qui 1 ora) e ogni spedizione viene interrogata solo se la
+        cadenza del suo stato è scaduta.
+
+        noupdate="1": frequenza/attivazione fatte da UI non vengono sovrascritte.
+        Sintassi Odoo 18 (no numbercall/doall).
+    -->
+    <data noupdate="1">
+        <record id="cron_poll_active_shipments" model="ir.cron">
+            <field name="name">Tracking: aggiorna spedizioni attive</field>
+            <field name="model_id" ref="model_centrivo_shipment"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_poll_active_shipments()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">hours</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="active" eval="False"/>
+        </record>
+
+        <!--
+            Motore di valutazione SLA (spec §7): risolve zona/regola e apre/risolve
+            gli alert da soglia + ri-valuta i trigger di stato (rete di sicurezza).
+            Frequenza configurabile da UI. Nasce DISATTIVO come gli altri cron.
+        -->
+        <record id="cron_evaluate_sla" model="ir.cron">
+            <field name="name">Tracking: valuta SLA</field>
+            <field name="model_id" ref="model_centrivo_shipment"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_evaluate_sla()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">hours</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="active" eval="False"/>
+        </record>
+    </data>
+</odoo>

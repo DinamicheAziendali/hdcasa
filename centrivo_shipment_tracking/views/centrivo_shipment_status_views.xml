@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_centrivo_shipment_status_list" model="ir.ui.view">
+        <field name="name">centrivo.shipment.status.list</field>
+        <field name="model">centrivo.shipment.status</field>
+        <field name="arch" type="xml">
+            <list string="Stati di tracking" editable="bottom">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="code" readonly="is_system"/>
+                <field name="is_system"/>
+                <field name="is_terminal"/>
+                <field name="is_problematic"/>
+                <field name="is_partial"/>
+                <field name="aggregation_priority"/>
+                <field name="polling_hours"/>
+                <field name="alert_if_persists"/>
+                <field name="alert_on_entry"/>
+                <field name="alert_suggests_claim"/>
+                <field name="active"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_centrivo_shipment_status_form" model="ir.ui.view">
+        <field name="name">centrivo.shipment.status.form</field>
+        <field name="model">centrivo.shipment.status</field>
+        <field name="arch" type="xml">
+            <form string="Stato di tracking">
+                <sheet>
+                    <group>
+                        <group string="Identità">
+                            <field name="name"/>
+                            <field name="code" readonly="is_system"/>
+                            <field name="is_system"/>
+                            <field name="active"/>
+                            <field name="sequence"/>
+                        </group>
+                        <group string="Comportamento">
+                            <field name="is_terminal"/>
+                            <field name="is_problematic"/>
+                            <field name="is_partial"/>
+                            <field name="aggregation_priority"/>
+                            <field name="polling_hours"/>
+                            <field name="alert_if_persists"/>
+                        </group>
+                        <group string="Trigger alert (SLA Fase 2)">
+                            <field name="alert_on_entry"/>
+                            <field name="alert_suggests_claim"
+                                   invisible="not alert_on_entry"/>
+                        </group>
+                    </group>
+                    <p class="text-muted">
+                        Gli stati di sistema sono protetti (codice e flag non
+                        modificabili, non cancellabili). Gli stati aggiunti
+                        dall'utente hanno comportamento neutro (cadenza polling
+                        standard, nessun trigger) finché non vengono configurati qui.
+                    </p>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_centrivo_shipment_status" model="ir.actions.act_window">
+        <field name="name">Stati spedizione</field>
+        <field name="res_model">centrivo.shipment.status</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

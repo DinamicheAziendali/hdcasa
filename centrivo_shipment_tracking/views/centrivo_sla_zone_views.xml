@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_centrivo_sla_zone_list" model="ir.ui.view">
+        <field name="name">centrivo.sla.zone.list</field>
+        <field name="model">centrivo.sla.zone</field>
+        <field name="arch" type="xml">
+            <list string="Zone SLA">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="country_ids" widget="many2many_tags" optional="show"/>
+                <field name="state_ids" widget="many2many_tags" optional="show"/>
+                <field name="zip_codes" optional="show"/>
+                <field name="active" optional="hide"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_centrivo_sla_zone_form" model="ir.ui.view">
+        <field name="name">centrivo.sla.zone.form</field>
+        <field name="model">centrivo.sla.zone</field>
+        <field name="arch" type="xml">
+            <form string="Zona SLA">
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="Es. Italia – Isole"/></h1>
+                    </div>
+                    <group>
+                        <group string="Criteri geografici">
+                            <field name="country_ids" widget="many2many_tags"
+                                   options="{'no_create': True}"/>
+                            <field name="state_ids" widget="many2many_tags"
+                                   options="{'no_create': True}"/>
+                            <field name="zip_codes"
+                                   placeholder="Es. 90100-92100, 09100, 07026"/>
+                        </group>
+                        <group string="Generale">
+                            <field name="sequence"/>
+                            <field name="active"/>
+                            <field name="company_id"
+                                   groups="base.group_multi_company"/>
+                        </group>
+                    </group>
+                    <p class="text-muted">
+                        La zona di una spedizione si risolve in modo deterministico
+                        con priorità dal più specifico al più generico:
+                        <strong>CAP &gt; provincia/stato &gt; nazione</strong>. Una
+                        zona combacia se TUTTI i suoi criteri non vuoti corrispondono
+                        all'indirizzo del destinatario. In Italia la «provincia» è lo
+                        state_id (es. PA, CT); per Isole/località remote bastano
+                        province + CAP. I range CAP valgono solo per CAP numerici.
+                    </p>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_centrivo_sla_zone_search" model="ir.ui.view">
+        <field name="name">centrivo.sla.zone.search</field>
+        <field name="model">centrivo.sla.zone</field>
+        <field name="arch" type="xml">
+            <search string="Zone SLA">
+                <field name="name"/>
+                <field name="country_ids"/>
+                <field name="state_ids"/>
+                <filter name="inactive" string="Archiviate"
+                        domain="[('active', '=', False)]"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_centrivo_sla_zone" model="ir.actions.act_window">
+        <field name="name">Zone SLA</field>
+        <field name="res_model">centrivo.sla.zone</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_centrivo_sla_zone_search"/>
+    </record>
+</odoo>

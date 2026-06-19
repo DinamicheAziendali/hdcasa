@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Seed della mappatura Poste → stati Centrivo (TASK_68), su DUE livelli.
+        noupdate="1": le modifiche dell'utente NON vengono sovrascritte agli update.
+        raw_code in MAIUSCOLO (match case-insensitive del modello).
+
+        Poste manda DUE campi per evento, verificati dal vivo su decine di spedizioni:
+          - `status` (granulare): codice primario. A volte "tradisce" il phase
+            (es. 003 ha phase IN CONSEGNA ma è una giacenza per indirizzo errato).
+          - `phase` (grossolano): fallback stabile.
+        La normalizzazione del base prova prima lo `status`, poi ripiega sul `phase`.
+
+        Quindi qui si seminano SOLO:
+          (1) gli OVERRIDE di status "traditori"/precisi (003/009/RRR);
+          (2) il FALLBACK sui 5 valori reali di phase.
+        I codici status COERENTI col phase (000, GGG, CGD, THE, PPP, AFC, RIT, 013...)
+        NON si mappano: ricadono correttamente sul fallback phase (mapparli sarebbe
+        ridondante). Le righe-fantasma del vecchio seed (GIACENZA, RIFIUTO, MANCATA
+        CONSEGNA, INDIRIZZO ERRATO, FERMO DEPOSITO, SVINCOLO, ANOMALIA, CENTRO
+        INTERNAZIONALE, IN ATTESA DI SDOGANAMENTO, RITIRATA IN DIGITALE, CONSEGNATO:
+        nomi-stato che l'API non manda MAI) sono rimosse — vedi migrazione 18.0.1.1.0.
+    -->
+    <data noupdate="1">
+
+        <!-- ============================================================ -->
+        <!-- (1) OVERRIDE su `status` (codici granulari "traditori")       -->
+        <!-- ============================================================ -->
+
+        <!-- status 003: consegna fallita / indirizzo errato = GIACENZA
+             (il phase dice IN CONSEGNA, ma è di fatto una giacenza). -->
+        <record id="map_poste_status_003" model="centrivo.shipment.status.map">
+            <field name="tracker_code">poste</field>
+            <field name="raw_code">003</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_held"/>
+            <field name="description">status 003: consegna fallita / indirizzo errato (giacenza).</field>
+        </record>
+
+        <!-- status 009: verifiche in corso / anomalia (phase IN TRANSITO). -->
+        <record id="map_poste_status_009" model="centrivo.shipment.status.map">
+            <field name="tracker_code">poste</field>
+            <field name="raw_code">009</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_exception"/>
+            <field name="description">status 009: verifiche in corso / anomalia.</field>
+        </record>
+
+        <!-- status RRR: reso al mittente. -->
+        <record id="map_poste_status_rrr" model="centrivo.shipment.status.map">
+            <field name="tracker_code">poste</field>
+            <field name="raw_code">RRR</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_returned"/>
+            <field name="description">status RRR: reso al mittente.</field>
+        </record>
+
+        <!-- ============================================================ -->
+        <!-- (2) FALLBACK su `phase` (5 valori reali, base stabile)        -->
+        <!-- ============================================================ -->
+
+        <!-- PRESA IN CARICO: ritirata dal mittente. -->
+        <record id="map_poste_presa_in_carico" model="centrivo.shipment.status.map">
+            <field name="tracker_code">poste</field>
+            <field name="raw_code">PRESA IN CARICO</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_pending_pickup"/>
+            <field name="description">phase PRESA IN CARICO.</field>
+        </record>
+
+        <!-- IN TRANSITO. -->
+        <record id="map_poste_in_transito" model="centrivo.shipment.status.map">
+            <field name="tracker_code">poste</field>
+            <field name="raw_code">IN TRANSITO</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">phase IN TRANSITO.</field>
+        </record>
+
+        <!-- IN CONSEGNA (ultimo miglio). -->
+        <record id="map_poste_in_consegna" model="centrivo.shipment.status.map">
+            <field name="tracker_code">poste</field>
+            <field name="raw_code">IN CONSEGNA</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_out_for_delivery"/>
+            <field name="description">phase IN CONSEGNA.</field>
+        </record>
+
+        <!-- CONSEGNATA (terminale). -->
+        <record id="map_poste_consegnata" model="centrivo.shipment.status.map">
+            <field name="tracker_code">poste</field>
+            <field name="raw_code">CONSEGNATA</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_delivered"/>
+            <field name="description">phase CONSEGNATA.</field>
+        </record>
+
+        <!-- RESO AL MITTENTE (reso → terminale). -->
+        <record id="map_poste_resa_al_mittente" model="centrivo.shipment.status.map">
+            <field name="tracker_code">poste</field>
+            <field name="raw_code">RESO AL MITTENTE</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_returned"/>
+            <field name="description">phase RESO AL MITTENTE.</field>
+        </record>
+
+    </data>
+</odoo>

@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_centrivo_shipment_alert_list" model="ir.ui.view">
+        <field name="name">centrivo.shipment.alert.list</field>
+        <field name="model">centrivo.shipment.alert</field>
+        <field name="arch" type="xml">
+            <list string="Alert spedizioni" create="false"
+                  decoration-danger="state == 'open'"
+                  decoration-muted="state in ('resolved', 'ignored')">
+                <field name="trigger_date"/>
+                <field name="shipment_id"/>
+                <field name="alert_kind"/>
+                <field name="name"/>
+                <field name="trigger_status_id" optional="hide"/>
+                <field name="rule_id" optional="hide"/>
+                <field name="suggested_claim"/>
+                <field name="state"/>
+                <field name="resolved_date" optional="hide"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+                <button name="action_resolve" type="object"
+                        string="Risolvi" icon="fa-check"
+                        invisible="state != 'open'"/>
+                <button name="action_ignore" type="object"
+                        string="Ignora" icon="fa-bell-slash"
+                        invisible="state != 'open'"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_centrivo_shipment_alert_form" model="ir.ui.view">
+        <field name="name">centrivo.shipment.alert.form</field>
+        <field name="model">centrivo.shipment.alert</field>
+        <field name="arch" type="xml">
+            <form string="Alert spedizione">
+                <header>
+                    <button name="action_resolve" type="object"
+                            string="Risolvi" class="btn-primary"
+                            invisible="state != 'open'"/>
+                    <button name="action_ignore" type="object"
+                            string="Ignora"
+                            invisible="state != 'open'"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="open,resolved"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group string="Origine">
+                            <field name="shipment_id"/>
+                            <field name="alert_kind"/>
+                            <field name="threshold_type"
+                                   invisible="alert_kind != 'threshold'"/>
+                            <field name="rule_id"
+                                   invisible="alert_kind != 'threshold'"/>
+                            <field name="trigger_status_id"
+                                   invisible="alert_kind != 'status'"/>
+                        </group>
+                        <group string="Stato">
+                            <field name="trigger_date"/>
+                            <field name="resolved_date"/>
+                            <field name="suggested_claim"/>
+                            <field name="company_id"
+                                   groups="base.group_multi_company"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_centrivo_shipment_alert_search" model="ir.ui.view">
+        <field name="name">centrivo.shipment.alert.search</field>
+        <field name="model">centrivo.shipment.alert</field>
+        <field name="arch" type="xml">
+            <search string="Alert">
+                <field name="shipment_id"/>
+                <field name="alert_type"/>
+                <filter name="open" string="Aperti"
+                        domain="[('state', '=', 'open')]"/>
+                <filter name="resolved" string="Risolti"
+                        domain="[('state', '=', 'resolved')]"/>
+                <filter name="ignored" string="Ignorati"
+                        domain="[('state', '=', 'ignored')]"/>
+                <separator/>
+                <filter name="threshold" string="Da soglia temporale"
+                        domain="[('alert_kind', '=', 'threshold')]"/>
+                <filter name="status" string="Da stato problematico"
+                        domain="[('alert_kind', '=', 'status')]"/>
+                <filter name="claim" string="Suggerisce reclamo"
+                        domain="[('suggested_claim', '=', True)]"/>
+                <group expand="0" string="Raggruppa per">
+                    <filter name="group_kind" string="Natura"
+                            context="{'group_by': 'alert_kind'}"/>
+                    <filter name="group_type" string="Tipo"
+                            context="{'group_by': 'alert_type'}"/>
+                    <filter name="group_state" string="Stato"
+                            context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_centrivo_shipment_alert" model="ir.actions.act_window">
+        <field name="name">Alert spedizioni</field>
+        <field name="res_model">centrivo.shipment.alert</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_centrivo_shipment_alert_search"/>
+        <field name="context">{'search_default_open': 1}</field>
+    </record>
+</odoo>

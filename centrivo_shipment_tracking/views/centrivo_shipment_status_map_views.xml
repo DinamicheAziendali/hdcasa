@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_centrivo_shipment_status_map_list" model="ir.ui.view">
+        <field name="name">centrivo.shipment.status.map.list</field>
+        <field name="model">centrivo.shipment.status.map</field>
+        <field name="arch" type="xml">
+            <list string="Normalizzazione stati" editable="bottom"
+                  decoration-warning="to_map">
+                <field name="tracker_code"/>
+                <field name="raw_code"/>
+                <field name="status_id"/>
+                <field name="is_pre_advice"/>
+                <field name="to_map" optional="show"/>
+                <field name="description"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_centrivo_shipment_status_map_search" model="ir.ui.view">
+        <field name="name">centrivo.shipment.status.map.search</field>
+        <field name="model">centrivo.shipment.status.map</field>
+        <field name="arch" type="xml">
+            <search string="Normalizzazione stati">
+                <field name="tracker_code"/>
+                <field name="raw_code"/>
+                <field name="status_id"/>
+                <filter name="to_map" string="Da mappare"
+                        domain="[('status_id', '=', False)]"/>
+                <filter name="pre_advice" string="Pre-advice"
+                        domain="[('is_pre_advice', '=', True)]"/>
+                <group expand="0" string="Raggruppa per">
+                    <filter name="group_tracker" string="Corriere"
+                            context="{'group_by': 'tracker_code'}"/>
+                    <filter name="group_status" string="Stato Centrivo"
+                            context="{'group_by': 'status_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_centrivo_shipment_status_map" model="ir.actions.act_window">
+        <field name="name">Normalizzazione stati</field>
+        <field name="res_model">centrivo.shipment.status.map</field>
+        <field name="view_mode">list</field>
+        <field name="search_view_id" ref="view_centrivo_shipment_status_map_search"/>
+    </record>
+</odoo>

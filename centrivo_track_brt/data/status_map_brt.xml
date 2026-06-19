@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Seed della mappatura codici stato BRT → stati Centrivo.
+        noupdate="1": le modifiche dell'utente alla tabella NON vengono
+        sovrascritte agli aggiornamenti del modulo. raw_code in MAIUSCOLO (il
+        modello normalizza comunque, match case-insensitive).
+
+        Due piani di codici (entrambi seminati, così il base risolve in ogni caso):
+          - codici evento BRT (evento.id): 700-704, MIC;
+          - keyword canoniche estratte dalla descrizione dall'adattatore: CONSEGNATO,
+            IN CONSEGNA, GIACENZA, MANCATA CONSEGNA, TENTATIVO, ANOMALIA, SOSPESA,
+            INESITATA, FERMO DEPOSITO, RIFIUTATA.
+
+        NB: l'elenco dei codici id 7xx è DEDOTTO dal comportamento di ShipTracker, NON
+        dal manuale ufficiale BRT: alcuni codici reali potrebbero mancare. I codici/
+        keyword non mappati finiscono in 'sconosciuto' + log e si aggiungono a mano a
+        valle dei test reali (sono quindi individuabili dal Log tracking).
+    -->
+    <data noupdate="1">
+
+        <!-- 700: dati trasmessi / presa in carico (stato iniziale distinto). -->
+        <record id="map_brt_700" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">700</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_pending_pickup"/>
+            <field name="is_pre_advice" eval="True"/>
+            <field name="description">Dati trasmessi / presa in carico (PRE-ADVICE: solo trasmissione dati, non movimentazione reale).</field>
+        </record>
+
+        <!-- 701: ritirata dal mittente. -->
+        <record id="map_brt_701" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">701</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">Ritirata dal mittente.</field>
+        </record>
+
+        <!-- 702: partita dallo smistamento. -->
+        <record id="map_brt_702" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">702</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">Partita dal centro di smistamento.</field>
+        </record>
+
+        <!-- 703: arrivata in filiale di destinazione. -->
+        <record id="map_brt_703" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">703</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">Arrivata in filiale di destinazione.</field>
+        </record>
+
+        <!-- MIC: in consegna (ultimo miglio). -->
+        <record id="map_brt_mic" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">MIC</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_out_for_delivery"/>
+            <field name="description">In consegna (ultimo miglio).</field>
+        </record>
+
+        <!-- 704: consegnato (terminale). -->
+        <record id="map_brt_704" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">704</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_delivered"/>
+            <field name="description">Consegnato.</field>
+        </record>
+
+        <!-- ============================================================ -->
+        <!-- Codici evento reali aggiuntivi (TASK_68, campo evento.id).    -->
+        <!-- BRT non "tradisce": ogni stato problematico ha un id dedicato. -->
+        <!-- ============================================================ -->
+
+        <!-- DIR: inoltro ad altra filiale (in transito). -->
+        <record id="map_brt_dir" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">DIR</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">Inoltro ad altra filiale.</field>
+        </record>
+
+        <!-- N: da consegnare (in transito). -->
+        <record id="map_brt_n" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">N</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">Da consegnare.</field>
+        </record>
+
+        <!-- T: chiuso per turno (blocco esterno, neutro → in transito). -->
+        <record id="map_brt_t" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">T</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">Chiuso per turno (blocco esterno, neutro).</field>
+        </record>
+
+        <!-- ZMP: manifestazione pubblica (blocco esterno, neutro → in transito). -->
+        <record id="map_brt_zmp" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">ZMP</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">Manifestazione pubblica (blocco esterno, neutro).</field>
+        </record>
+
+        <!-- 724: ritirata al BRT-fermopoint dal destinatario (consegna riuscita). -->
+        <record id="map_brt_724" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">724</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_delivered"/>
+            <field name="description">Ritirata al BRT-fermopoint dal destinatario (consegna riuscita).</field>
+        </record>
+
+        <!-- AVV: destinatario assente, lasciato avviso (giacenza). -->
+        <record id="map_brt_avv" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">AVV</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_held"/>
+            <field name="description">Destinatario assente, lasciato avviso (giacenza).</field>
+        </record>
+
+        <!-- 017: assente dopo lasciato avviso (giacenza). -->
+        <record id="map_brt_017" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">017</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_held"/>
+            <field name="description">Assente dopo lasciato avviso (giacenza).</field>
+        </record>
+
+        <!-- 722: arrivata al BRT-fermopoint, in attesa ritiro (giacenza). -->
+        <record id="map_brt_722" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">722</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_held"/>
+            <field name="description">Arrivata al BRT-fermopoint, in attesa di ritiro (giacenza).</field>
+        </record>
+
+        <!-- DPU: da ritirare al parcel shop (giacenza). -->
+        <record id="map_brt_dpu" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">DPU</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_held"/>
+            <field name="description">Da ritirare al parcel shop (giacenza).</field>
+        </record>
+
+        <!-- DPP: non ritirata al parcel shop (giacenza). -->
+        <record id="map_brt_dpp" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">DPP</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_held"/>
+            <field name="description">Non ritirata al parcel shop (giacenza).</field>
+        </record>
+
+        <!-- 002: rifiuto, merce non ordinata (eccezione). -->
+        <record id="map_brt_002" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">002</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_exception"/>
+            <field name="description">Rifiuto: merce non ordinata.</field>
+        </record>
+
+        <!-- 007: rifiuto per collo danneggiato (eccezione). -->
+        <record id="map_brt_007" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">007</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_exception"/>
+            <field name="description">Rifiuto per collo danneggiato.</field>
+        </record>
+
+        <!-- 021: destinatario sconosciuto/incompleto (eccezione). -->
+        <record id="map_brt_021" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">021</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_exception"/>
+            <field name="description">Destinatario sconosciuto/incompleto.</field>
+        </record>
+
+        <!-- 022: indirizzo inesistente/incompleto (eccezione). -->
+        <record id="map_brt_022" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">022</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_exception"/>
+            <field name="description">Indirizzo inesistente/incompleto.</field>
+        </record>
+
+        <!-- 026: chiesta consegna ad altro indirizzo (eccezione). -->
+        <record id="map_brt_026" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">026</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_exception"/>
+            <field name="description">Chiesta consegna ad altro indirizzo.</field>
+        </record>
+
+        <!-- 708: reso al mittente (terminale). -->
+        <record id="map_brt_708" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">708</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_returned"/>
+            <field name="description">Reso al mittente.</field>
+        </record>
+
+        <!-- Keyword di descrizione (rete di sicurezza per id non mappati). -->
+
+        <!-- CONSEGNATO. -->
+        <record id="map_brt_kw_consegnato" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">CONSEGNATO</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_delivered"/>
+            <field name="description">Descrizione: consegnato.</field>
+        </record>
+
+        <!-- IN CONSEGNA. -->
+        <record id="map_brt_kw_in_consegna" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">IN CONSEGNA</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_out_for_delivery"/>
+            <field name="description">Descrizione: in consegna.</field>
+        </record>
+
+        <!-- GIACENZA. -->
+        <record id="map_brt_kw_giacenza" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">GIACENZA</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_held"/>
+            <field name="description">Descrizione: in giacenza.</field>
+        </record>
+
+        <!-- MANCATA CONSEGNA. -->
+        <record id="map_brt_kw_mancata" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">MANCATA CONSEGNA</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_exception"/>
+            <field name="description">Descrizione: tentativo di consegna fallito.</field>
+        </record>
+
+        <!-- TENTATIVO. -->
+        <record id="map_brt_kw_tentativo" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">TENTATIVO</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_exception"/>
+            <field name="description">Descrizione: tentativo di consegna.</field>
+        </record>
+
+        <!-- ANOMALIA. -->
+        <record id="map_brt_kw_anomalia" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">ANOMALIA</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_exception"/>
+            <field name="description">Descrizione: anomalia.</field>
+        </record>
+
+        <!-- SOSPESA. -->
+        <record id="map_brt_kw_sospesa" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">SOSPESA</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_exception"/>
+            <field name="description">Descrizione: spedizione sospesa.</field>
+        </record>
+
+        <!-- INESITATA. -->
+        <record id="map_brt_kw_inesitata" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">INESITATA</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_exception"/>
+            <field name="description">Descrizione: indirizzo errato / inesitata.</field>
+        </record>
+
+        <!-- FERMO DEPOSITO. -->
+        <record id="map_brt_kw_fermo_deposito" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">FERMO DEPOSITO</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_exception"/>
+            <field name="description">Descrizione: fermo in deposito.</field>
+        </record>
+
+        <!-- RIFIUTATA. -->
+        <record id="map_brt_kw_rifiutata" model="centrivo.shipment.status.map">
+            <field name="tracker_code">brt</field>
+            <field name="raw_code">RIFIUTATA</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_exception"/>
+            <field name="description">Descrizione: rifiutata dal destinatario.</field>
+        </record>
+
+    </data>
+</odoo>

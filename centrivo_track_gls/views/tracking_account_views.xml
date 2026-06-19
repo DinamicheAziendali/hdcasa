@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Mostra i campi credenziali GLS (sigla sede + codice contratto) sul form
+        Account corriere SOLO per gli account GLS (tracker_code == 'gls'). Eredita la
+        vista del modulo base. I campi compaiono subito dopo l'Endpoint.
+    -->
+    <record id="view_centrivo_tracking_account_form_gls" model="ir.ui.view">
+        <field name="name">centrivo.tracking.account.form.gls</field>
+        <field name="model">centrivo.tracking.account</field>
+        <field name="inherit_id"
+               ref="centrivo_shipment_tracking.view_centrivo_tracking_account_form"/>
+        <field name="arch" type="xml">
+            <field name="endpoint" position="after">
+                <field name="gls_sender_code"
+                       invisible="tracker_code != 'gls'"/>
+                <field name="gls_contract_code"
+                       invisible="tracker_code != 'gls'"/>
+            </field>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,20 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_centrivo_shipment_user,centrivo.shipment user,model_centrivo_shipment,base.group_user,1,1,1,1
+access_centrivo_shipment_parcel_user,centrivo.shipment.parcel user,model_centrivo_shipment_parcel,base.group_user,1,1,1,1
+access_centrivo_shipment_event_user,centrivo.shipment.event user,model_centrivo_shipment_event,base.group_user,1,1,1,1
+access_centrivo_tracking_account_user,centrivo.tracking.account user,model_centrivo_tracking_account,base.group_user,1,1,1,1
+access_centrivo_shipment_status_user,centrivo.shipment.status user read,model_centrivo_shipment_status,base.group_user,1,0,0,0
+access_centrivo_shipment_status_manager,centrivo.shipment.status manager,model_centrivo_shipment_status,base.group_system,1,1,1,1
+access_centrivo_shipment_status_map_user,centrivo.shipment.status.map user read,model_centrivo_shipment_status_map,base.group_user,1,0,0,0
+access_centrivo_shipment_status_map_manager,centrivo.shipment.status.map manager,model_centrivo_shipment_status_map,base.group_system,1,1,1,1
+access_centrivo_tracking_carrier_map_user,centrivo.tracking.carrier.map user,model_centrivo_tracking_carrier_map,base.group_user,1,1,1,1
+access_centrivo_tracking_config_user,centrivo.tracking.config user read,model_centrivo_tracking_config,base.group_user,1,0,0,0
+access_centrivo_tracking_config_manager,centrivo.tracking.config manager,model_centrivo_tracking_config,base.group_system,1,1,1,1
+access_centrivo_shipment_log_user,centrivo.shipment.log user,model_centrivo_shipment_log,base.group_user,1,0,1,0
+access_centrivo_shipment_log_manager,centrivo.shipment.log manager,model_centrivo_shipment_log,base.group_system,1,1,1,1
+access_centrivo_sla_zone_user,centrivo.sla.zone user read,model_centrivo_sla_zone,base.group_user,1,0,0,0
+access_centrivo_sla_zone_manager,centrivo.sla.zone manager,model_centrivo_sla_zone,base.group_system,1,1,1,1
+access_centrivo_sla_rule_user,centrivo.sla.rule user read,model_centrivo_sla_rule,base.group_user,1,0,0,0
+access_centrivo_sla_rule_manager,centrivo.sla.rule manager,model_centrivo_sla_rule,base.group_system,1,1,1,1
+access_centrivo_shipment_alert_user,centrivo.shipment.alert user,model_centrivo_shipment_alert,base.group_user,1,1,1,0
+access_centrivo_shipment_alert_manager,centrivo.shipment.alert manager,model_centrivo_shipment_alert,base.group_system,1,1,1,1

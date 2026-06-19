@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_centrivo_shipment_log_list" model="ir.ui.view">
+        <field name="name">centrivo.shipment.log.list</field>
+        <field name="model">centrivo.shipment.log</field>
+        <field name="arch" type="xml">
+            <list string="Log tracking" create="false" edit="false"
+                  decoration-danger="result == 'error'"
+                  decoration-muted="result == 'skip'">
+                <field name="event_datetime"/>
+                <field name="operation"/>
+                <field name="result"/>
+                <field name="tracker_code"/>
+                <field name="shipment_id"/>
+                <field name="message"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_centrivo_shipment_log_form" model="ir.ui.view">
+        <field name="name">centrivo.shipment.log.form</field>
+        <field name="model">centrivo.shipment.log</field>
+        <field name="arch" type="xml">
+            <form string="Log tracking" create="false" edit="false">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="event_datetime"/>
+                            <field name="operation"/>
+                            <field name="result"/>
+                            <field name="tracker_code"/>
+                        </group>
+                        <group>
+                            <field name="shipment_id"/>
+                            <field name="parcel_id"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                    </group>
+                    <group string="Messaggio">
+                        <field name="message" nolabel="1"/>
+                    </group>
+                    <group string="Estratto risposta (troncato)">
+                        <field name="raw_excerpt" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_centrivo_shipment_log_search" model="ir.ui.view">
+        <field name="name">centrivo.shipment.log.search</field>
+        <field name="model">centrivo.shipment.log</field>
+        <field name="arch" type="xml">
+            <search string="Log tracking">
+                <field name="operation"/>
+                <field name="tracker_code"/>
+                <field name="shipment_id"/>
+                <field name="message"/>
+                <filter name="errors" string="Errori"
+                        domain="[('result', '=', 'error')]"/>
+                <filter name="skips" string="Saltati"
+                        domain="[('result', '=', 'skip')]"/>
+                <separator/>
+                <filter name="op_poll" string="Polling"
+                        domain="[('operation', '=', 'poll_tracking')]"/>
+                <filter name="op_resolve" string="Risoluzione corriere"
+                        domain="[('operation', '=', 'resolve_carrier')]"/>
+                <filter name="op_norm" string="Normalizzazione stato"
+                        domain="[('operation', '=', 'normalize_status')]"/>
+                <group expand="0" string="Raggruppa per">
+                    <filter name="group_op" string="Operazione"
+                            context="{'group_by': 'operation'}"/>
+                    <filter name="group_result" string="Esito"
+                            context="{'group_by': 'result'}"/>
+                    <filter name="group_tracker" string="Corriere"
+                            context="{'group_by': 'tracker_code'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_centrivo_shipment_log" model="ir.actions.act_window">
+        <field name="name">Log tracking</field>
+        <field name="res_model">centrivo.shipment.log</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_centrivo_shipment_log_search"/>
+    </record>
+</odoo>

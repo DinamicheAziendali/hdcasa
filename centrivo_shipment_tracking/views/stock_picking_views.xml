@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Smart button "Tracking" + bottone "Attiva tracking" + stato reale sul
+         form del picking. Lo stato nativo NON viene toccato. Si ancora a elementi
+         presenti nella vista BASE (header, button_box, campo origin) per non
+         dipendere dalle viste aggiunte da altri moduli (delivery, ecc.). -->
+    <record id="view_picking_form_centrivo_tracking" model="ir.ui.view">
+        <field name="name">stock.picking.form.centrivo.tracking</field>
+        <field name="model">stock.picking</field>
+        <field name="inherit_id" ref="stock.view_picking_form"/>
+        <field name="arch" type="xml">
+            <div name="button_box" position="inside">
+                <button name="action_view_centrivo_shipment" type="object"
+                        class="oe_stat_button" icon="fa-map-marker"
+                        invisible="centrivo_shipment_count == 0">
+                    <field name="centrivo_shipment_count" widget="statinfo"
+                           string="Tracking"/>
+                </button>
+            </div>
+            <xpath expr="//header" position="inside">
+                <button name="action_centrivo_create_tracking" type="object"
+                        string="Attiva tracking spedizione"
+                        invisible="state != 'done' or not carrier_tracking_ref or centrivo_shipment_count > 0"/>
+            </xpath>
+            <field name="origin" position="after">
+                <field name="centrivo_tracking_status_id" readonly="1"
+                       invisible="not centrivo_tracking_status_id"/>
+                <field name="centrivo_tracking_status_date" readonly="1"
+                       invisible="not centrivo_tracking_status_id"/>
+                <field name="centrivo_is_late" readonly="1"
+                       invisible="not centrivo_is_late"/>
+            </field>
+        </field>
+    </record>
+</odoo>

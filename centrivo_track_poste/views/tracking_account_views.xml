@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Mostra il campo poste_scope sul form Account corriere SOLO per gli account
+        Poste (tracker_code == 'poste'). Eredita la vista del modulo base senza
+        modificarla per gli altri corrieri.
+    -->
+    <record id="view_centrivo_tracking_account_form_poste" model="ir.ui.view">
+        <field name="name">centrivo.tracking.account.form.poste</field>
+        <field name="model">centrivo.tracking.account</field>
+        <field name="inherit_id"
+               ref="centrivo_shipment_tracking.view_centrivo_tracking_account_form"/>
+        <field name="arch" type="xml">
+            <!-- Dopo il secondo api_password (= "Secret ID Poste"): la base rende
+                 api_password due volte (etichetta BRT e Poste), quindi si àncora
+                 esplicitamente al secondo nodo. Scope con etichetta reale. -->
+            <xpath expr="//field[@name='api_password'][2]" position="after">
+                <field name="poste_scope" string="Scope Poste"
+                       invisible="tracker_code != 'poste'"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

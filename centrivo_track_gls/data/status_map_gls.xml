@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Seed della mappatura codici stato GLS → stati Centrivo.
+        noupdate="1": le modifiche dell'utente NON vengono sovrascritte agli update.
+        raw_code in MAIUSCOLO (match case-insensitive del modello).
+
+        FONTE infoweb (TASK_69): la tratta ITALIANA fornisce un <Codice> STRUTTURATO
+        per ogni evento (es. 906=consegnato, 66=giacenza, 29=reso). La tratta ESTERA
+        (TRACKINGINT) NON ha codice: l'adattatore traduce il testo <Stato> in uno di
+        questi codici canonici via match conservativo (vedi connettore), quindi qui
+        basta seminare i codici.
+
+        In coda restano le vecchie chiavi TESTUALI del nodo pubblico
+        (PREADVICE/INTRANSIT/INWAREHOUSE/INDELIVERY/DELIVERED): NON più emesse dal nuovo
+        parser, ma mantenute per retrocompatibilità con gli eventi storici già in DB.
+    -->
+    <data noupdate="1">
+
+        <!-- ============================================================ -->
+        <!-- Codici evento strutturati (tratta IT) — fonte infoweb         -->
+        <!-- ============================================================ -->
+
+        <!-- pending_pickup (annunciata/creata, non ancora affidata = PRE-ADVICE). -->
+        <record id="map_gls_901" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">901</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_pending_pickup"/>
+            <field name="is_pre_advice" eval="True"/>
+            <field name="description">Spedizione annunciata (pre-advice).</field>
+        </record>
+        <record id="map_gls_909" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">909</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_pending_pickup"/>
+            <field name="is_pre_advice" eval="True"/>
+            <field name="description">Spedizione creata, non ancora affidata (pre-advice).</field>
+        </record>
+
+        <!-- in_transit. -->
+        <record id="map_gls_902" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">902</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">In transito.</field>
+        </record>
+        <record id="map_gls_903" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">903</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">In transito.</field>
+        </record>
+        <record id="map_gls_904" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">904</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">In transito.</field>
+        </record>
+        <record id="map_gls_61" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">61</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">In transito.</field>
+        </record>
+        <record id="map_gls_22" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">22</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">In transito.</field>
+        </record>
+        <record id="map_gls_28" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">28</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">In transito.</field>
+        </record>
+        <record id="map_gls_25" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">25</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">Non ancora arrivata in sede destinataria (ritardo di transito).</field>
+        </record>
+        <record id="map_gls_26" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">26</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">Non arrivata in sede destinataria (ritardo di transito).</field>
+        </record>
+        <record id="map_gls_27" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">27</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">Ritardo di transito.</field>
+        </record>
+        <record id="map_gls_67" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">67</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">In transito.</field>
+        </record>
+
+        <!-- out_for_delivery (consegna concordata/prenotata/prevista oggi). -->
+        <record id="map_gls_905" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">905</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_out_for_delivery"/>
+            <field name="description">Consegna prevista oggi.</field>
+        </record>
+        <record id="map_gls_14" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">14</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_out_for_delivery"/>
+            <field name="description">Consegna concordata.</field>
+        </record>
+        <record id="map_gls_74" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">74</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_out_for_delivery"/>
+            <field name="description">Consegna prenotata.</field>
+        </record>
+
+        <!-- delivered (terminale). -->
+        <record id="map_gls_906" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">906</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_delivered"/>
+            <field name="description">Consegnato.</field>
+        </record>
+
+        <!-- held (giacenza). -->
+        <record id="map_gls_1" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">1</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_held"/>
+            <field name="description">Destinatario assente (giacenza).</field>
+        </record>
+        <record id="map_gls_12" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">12</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_held"/>
+            <field name="description">Richiesto ritiro presso sede (giacenza).</field>
+        </record>
+        <record id="map_gls_66" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">66</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_held"/>
+            <field name="description">In giacenza, in attesa di istruzioni.</field>
+        </record>
+
+        <!-- exception (indirizzo errato → gestione operatore). -->
+        <record id="map_gls_3" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">3</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_exception"/>
+            <field name="description">Indirizzo errato.</field>
+        </record>
+
+        <!-- returned (restituita al mittente, terminale). -->
+        <record id="map_gls_29" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">29</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_returned"/>
+            <field name="description">Restituita al mittente.</field>
+        </record>
+
+        <!-- ============================================================ -->
+        <!-- Vecchie chiavi testuali (nodo pubblico) — solo retrocompat.   -->
+        <!-- Non più emesse dal parser infoweb; mantenute per gli eventi   -->
+        <!-- storici già in DB.                                            -->
+        <!-- ============================================================ -->
+
+        <record id="map_gls_preadvice" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">PREADVICE</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_pending_pickup"/>
+            <field name="is_pre_advice" eval="True"/>
+            <field name="description">Pre-avviso (nodo pubblico, storico).</field>
+        </record>
+        <record id="map_gls_intransit" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">INTRANSIT</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">In transito (nodo pubblico, storico).</field>
+        </record>
+        <record id="map_gls_inwarehouse" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">INWAREHOUSE</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_in_transit"/>
+            <field name="description">In sede GLS destinataria (nodo pubblico, storico).</field>
+        </record>
+        <record id="map_gls_indelivery" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">INDELIVERY</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_out_for_delivery"/>
+            <field name="description">In consegna (nodo pubblico, storico).</field>
+        </record>
+        <record id="map_gls_delivered" model="centrivo.shipment.status.map">
+            <field name="tracker_code">gls</field>
+            <field name="raw_code">DELIVERED</field>
+            <field name="status_id" ref="centrivo_shipment_tracking.status_delivered"/>
+            <field name="description">Consegnato (nodo pubblico, storico).</field>
+        </record>
+
+    </data>
+</odoo>

@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Record rules multi-AZIENDA (company_id) sui modelli TRANSAZIONALI del
+        tracking (spedizione, collo, evento, account). Pattern Odoo standard: rule
+        GLOBALE con domain ['|', ('company_id','=',False), ('company_id','in',company_ids)].
+
+        NB: gli stati (centrivo.shipment.status) e la tabella di normalizzazione
+        (centrivo.shipment.status.map) sono un CATALOGO di configurazione GLOBALE
+        (senza company_id), quindi NON hanno record rule: sono condivisi tra le
+        aziende come una definizione di macchina a stati.
+    -->
+    <record id="centrivo_shipment_company_rule" model="ir.rule">
+        <field name="name">centrivo.shipment multi-company</field>
+        <field name="model_id" ref="model_centrivo_shipment"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="centrivo_shipment_parcel_company_rule" model="ir.rule">
+        <field name="name">centrivo.shipment.parcel multi-company</field>
+        <field name="model_id" ref="model_centrivo_shipment_parcel"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="centrivo_shipment_event_company_rule" model="ir.rule">
+        <field name="name">centrivo.shipment.event multi-company</field>
+        <field name="model_id" ref="model_centrivo_shipment_event"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="centrivo_tracking_account_company_rule" model="ir.rule">
+        <field name="name">centrivo.tracking.account multi-company</field>
+        <field name="model_id" ref="model_centrivo_tracking_account"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="centrivo_tracking_carrier_map_company_rule" model="ir.rule">
+        <field name="name">centrivo.tracking.carrier.map multi-company</field>
+        <field name="model_id" ref="model_centrivo_tracking_carrier_map"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="centrivo_shipment_log_company_rule" model="ir.rule">
+        <field name="name">centrivo.shipment.log multi-company</field>
+        <field name="model_id" ref="model_centrivo_shipment_log"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <!-- Modelli SLA (Fase 2): zona/regola/alert sono transazionali → record rule. -->
+    <record id="centrivo_sla_zone_company_rule" model="ir.rule">
+        <field name="name">centrivo.sla.zone multi-company</field>
+        <field name="model_id" ref="model_centrivo_sla_zone"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="centrivo_sla_rule_company_rule" model="ir.rule">
+        <field name="name">centrivo.sla.rule multi-company</field>
+        <field name="model_id" ref="model_centrivo_sla_rule"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="centrivo_shipment_alert_company_rule" model="ir.rule">
+        <field name="name">centrivo.shipment.alert multi-company</field>
+        <field name="model_id" ref="model_centrivo_shipment_alert"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+</odoo>

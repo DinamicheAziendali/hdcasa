@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_centrivo_tracking_config_form" model="ir.ui.view">
+        <field name="name">centrivo.tracking.config.form</field>
+        <field name="model">centrivo.tracking.config</field>
+        <field name="arch" type="xml">
+            <form string="Configurazione tracking">
+                <header>
+                    <button name="action_register_license_now" type="object"
+                            string="Registra ora"
+                            help="Re-invia subito il ping di registrazione al Centrivo
+                                  License Server (best-effort, non bloccante)."/>
+                </header>
+                <sheet>
+                    <group>
+                        <group string="Campo sorgente corriere">
+                            <field name="source_field_id"
+                                   options="{'no_create': True, 'no_open': True}"/>
+                            <field name="source_field_name" readonly="1"/>
+                        </group>
+                        <group string="Impostazioni globali SLA">
+                            <field name="default_alert_user_ids"
+                                   widget="many2many_tags"
+                                   options="{'no_create': True}"/>
+                        </group>
+                        <group string="Registrazione Centrivo">
+                            <field name="centrivo_contact"/>
+                            <field name="centrivo_license_server_url"/>
+                        </group>
+                    </group>
+                    <p class="text-muted">
+                        <strong>Registrazione Centrivo (license server).</strong>
+                        All'installazione e a ogni aggiornamento di versione, il modulo
+                        invia un <em>ping di registrazione</em> al Centrivo License
+                        Server con i <strong>dati minimi</strong>: identificativo del
+                        database (dbuuid), prodotto (<code>tracking</code>), versione del
+                        modulo, URL dell'istanza e il <strong>Contatto</strong> qui
+                        sopra (opzionale). La registrazione è <strong>best-effort</strong>:
+                        nessun dato di spedizione lascia l'istanza, nessuna funzionalità
+                        viene bloccata se il server non risponde. Usa
+                        <strong>«Registra ora»</strong> per ri-registrare on-demand.
+                    </p>
+                    <p class="text-muted">
+                        <strong>Impostazioni globali SLA.</strong> Gli utenti indicati
+                        ricevono l'attività quando una spedizione entra in uno stato
+                        problematico configurato (trigger su stato). Gli alert da
+                        <em>soglia temporale</em> usano invece gli utenti della
+                        relativa <strong>Regola SLA</strong>. La frequenza del motore
+                        SLA si regola sul cron <em>«Tracking: valuta SLA»</em>
+                        (Impostazioni → Tecnico → Azioni pianificate, disattivo di
+                        default); QUALI stati generano alert si configura sugli
+                        <strong>Stati spedizione</strong> (campo «Genera alert
+                        all'ingresso»).
+                    </p>
+                    <p class="text-muted">
+                        Scegli da QUALE campo del trasferimento (stock.picking) il
+                        modulo legge il corriere. La tendina mostra SOLO i campi
+                        relazionali verso un modello-corriere:
+                        <strong>carrier_id</strong> (nativo, predefinito) ed
+                        eventuali campi di terzi come
+                        <strong>transport_carrier_id</strong> (Dinamiche Aziendali).
+                        I campi testuali (es. il numero di spedizione
+                        <strong>carrier_tracking_ref</strong>) non sono
+                        selezionabili. Se il campo non esiste (modulo di terzi
+                        disinstallato) o è vuoto, il corriere si assegna a mano sulla
+                        spedizione. Il valore del campo si traduce in un adattatore
+                        tramite la <strong>Mappa corrieri</strong>.
+                    </p>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Apre direttamente il record singleton di configurazione (seminato in
+         data/centrivo_tracking_config_data.xml). Un act_window con res_id è la
+         voce di menu più affidabile (a differenza di una server action). -->
+    <record id="action_centrivo_tracking_config" model="ir.actions.act_window">
+        <field name="name">Impostazioni tracking</field>
+        <field name="res_model">centrivo.tracking.config</field>
+        <field name="view_mode">form</field>
+        <field name="res_id" ref="centrivo_tracking_config_singleton"/>
+        <field name="target">current</field>
+    </record>
+</odoo>

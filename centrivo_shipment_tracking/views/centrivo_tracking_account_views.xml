@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_centrivo_tracking_account_list" model="ir.ui.view">
+        <field name="name">centrivo.tracking.account.list</field>
+        <field name="model">centrivo.tracking.account</field>
+        <field name="arch" type="xml">
+            <list string="Account di tracking">
+                <field name="name"/>
+                <field name="tracker_code"/>
+                <field name="environment"/>
+                <field name="active"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_centrivo_tracking_account_form" model="ir.ui.view">
+        <field name="name">centrivo.tracking.account.form</field>
+        <field name="model">centrivo.tracking.account</field>
+        <field name="arch" type="xml">
+            <form string="Account di tracking">
+                <sheet>
+                    <group>
+                        <group string="Identità">
+                            <field name="name"/>
+                            <field name="tracker_code"/>
+                            <field name="environment"/>
+                            <field name="active"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                        <group string="Connessione">
+                            <field name="requires_credentials" invisible="1"/>
+                            <field name="endpoint"/>
+                            <!-- Credenziali per corriere con etichette reali e
+                                 visibilità condizionale su tracker_code (TASK_69). I
+                                 campi GLS (sigla sede / codice contratto) li aggiunge
+                                 la vista del modulo GLS; lo scope Poste quella Poste.
+                                 api_user/api_password (storage condiviso) compaiono con
+                                 etichetta BRT o Poste a seconda del corriere. -->
+                            <field name="api_user" string="User ID BRT"
+                                   invisible="tracker_code != 'brt'"/>
+                            <field name="api_password" string="Password BRT"
+                                   password="True"
+                                   invisible="tracker_code != 'brt'"/>
+                            <field name="api_user" string="Client ID Poste"
+                                   invisible="tracker_code != 'poste'"/>
+                            <field name="api_password" string="Secret ID Poste"
+                                   password="True"
+                                   invisible="tracker_code != 'poste'"/>
+                        </group>
+                    </group>
+                    <group string="Metodi di consegna nativi (opzionale, compatibilità)">
+                        <field name="delivery_carrier_ids" nolabel="1"
+                               widget="many2many_tags"/>
+                    </group>
+                    <p class="text-muted">
+                        L'account porta endpoint e (se servono) credenziali del
+                        connettore. La RISOLUZIONE del corriere passa dalla
+                        configurazione del campo sorgente + Mappa corrieri; questo
+                        elenco di metodi di consegna nativi resta solo per
+                        compatibilità (chi usa il delivery.carrier nativo come
+                        sorgente). Per il nodo pubblico GLS le credenziali non servono.
+                    </p>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_centrivo_tracking_account" model="ir.actions.act_window">
+        <field name="name">Account corriere</field>
+        <field name="res_model">centrivo.tracking.account</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

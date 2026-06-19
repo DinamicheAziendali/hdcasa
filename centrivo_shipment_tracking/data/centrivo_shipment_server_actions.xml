@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Azione server per l'aggiornamento tracking MASSIVO dalla lista spedizioni
+         (menu Azioni, selezione multipla). La forma singola è il bottone in
+         testata del form. Entrambe chiamano action_update_tracking. -->
+    <record id="action_server_update_tracking" model="ir.actions.server">
+        <field name="name">Aggiorna tracking ora (Centrivo)</field>
+        <field name="model_id" ref="model_centrivo_shipment"/>
+        <field name="binding_model_id" ref="model_centrivo_shipment"/>
+        <field name="binding_view_types">list,form</field>
+        <field name="state">code</field>
+        <field name="code">records.action_update_tracking()</field>
+    </record>
+</odoo>

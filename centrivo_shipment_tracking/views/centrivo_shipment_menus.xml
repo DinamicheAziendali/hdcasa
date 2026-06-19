@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- App "Spedizioni" (tracking post-spedizione). -->
+    <menuitem id="menu_centrivo_shipment_root"
+              name="Spedizioni"
+              sequence="92"/>
+
+    <menuitem id="menu_centrivo_shipment_tracking"
+              name="Tracking spedizioni"
+              parent="menu_centrivo_shipment_root"
+              action="action_centrivo_shipment"
+              sequence="10"/>
+
+    <!-- Alert spedizioni (operativo): contatore/lista degli alert SLA e di stato. -->
+    <menuitem id="menu_centrivo_shipment_alert"
+              name="Alert"
+              parent="menu_centrivo_shipment_root"
+              action="action_centrivo_shipment_alert"
+              sequence="20"/>
+
+    <!-- Log operazioni di tracking (voce a sé, sola lettura). -->
+    <menuitem id="menu_centrivo_shipment_log"
+              name="Log tracking"
+              parent="menu_centrivo_shipment_root"
+              action="action_centrivo_shipment_log"
+              sequence="50"/>
+
+    <!-- Configurazione (admin). -->
+    <menuitem id="menu_centrivo_shipment_config"
+              name="Configurazione"
+              parent="menu_centrivo_shipment_root"
+              sequence="90"/>
+
+    <menuitem id="menu_centrivo_tracking_config"
+              name="Impostazioni tracking"
+              parent="menu_centrivo_shipment_config"
+              action="action_centrivo_tracking_config"
+              sequence="5"/>
+
+    <menuitem id="menu_centrivo_tracking_account"
+              name="Account corriere"
+              parent="menu_centrivo_shipment_config"
+              action="action_centrivo_tracking_account"
+              sequence="10"/>
+
+    <menuitem id="menu_centrivo_tracking_carrier_map"
+              name="Mappa corrieri"
+              parent="menu_centrivo_shipment_config"
+              action="action_centrivo_tracking_carrier_map"
+              sequence="15"/>
+
+    <!-- Configurazione SLA (Fase 2). -->
+    <menuitem id="menu_centrivo_sla_zone"
+              name="Zone SLA"
+              parent="menu_centrivo_shipment_config"
+              action="action_centrivo_sla_zone"
+              sequence="40"/>
+
+    <menuitem id="menu_centrivo_sla_rule"
+              name="Regole SLA"
+              parent="menu_centrivo_shipment_config"
+              action="action_centrivo_sla_rule"
+              sequence="45"/>
+
+    <menuitem id="menu_centrivo_shipment_status"
+              name="Stati spedizione"
+              parent="menu_centrivo_shipment_config"
+              action="action_centrivo_shipment_status"
+              sequence="20"/>
+
+    <menuitem id="menu_centrivo_shipment_status_map"
+              name="Normalizzazione stati"
+              parent="menu_centrivo_shipment_config"
+              action="action_centrivo_shipment_status_map"
+              sequence="30"/>
+</odoo>

@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Stati di SISTEMA del tracking (is_system=True: protetti, non cancellabili
+        né rinominabili). Codici tecnici stabili su cui poggiano polling adattivo,
+        aggregazione multicollo e (in futuro) i trigger reclami.
+
+        noupdate="1": le personalizzazioni dell'utente (es. cadenza polling) NON
+        vengono sovrascritte dagli aggiornamenti del modulo. I valori qui sono solo
+        i DEFAULT di partenza.
+
+        Cadenze (polling_hours) e priorità di aggregazione (aggregation_priority)
+        secondo spec §3 e §5. La priorità esatta in caso di stati misti è da
+        confermare (vedi report).
+    -->
+    <data noupdate="1">
+
+        <!-- In attesa presa in carico: etichetta fatta, corriere non ha ritirato. -->
+        <record id="status_pending_pickup" model="centrivo.shipment.status">
+            <field name="name">In attesa presa in carico</field>
+            <field name="code">pending_pickup</field>
+            <field name="sequence">10</field>
+            <field name="is_system" eval="True"/>
+            <field name="aggregation_priority">30</field>
+            <field name="polling_hours">12.0</field>
+            <field name="alert_if_persists" eval="True"/>
+        </record>
+
+        <!-- In transito: sta viaggiando. -->
+        <record id="status_in_transit" model="centrivo.shipment.status">
+            <field name="name">In transito</field>
+            <field name="code">in_transit</field>
+            <field name="sequence">20</field>
+            <field name="is_system" eval="True"/>
+            <field name="aggregation_priority">40</field>
+            <field name="polling_hours">4.0</field>
+        </record>
+
+        <!-- In consegna: ultimo miglio. -->
+        <record id="status_out_for_delivery" model="centrivo.shipment.status">
+            <field name="name">In consegna</field>
+            <field name="code">out_for_delivery</field>
+            <field name="sequence">30</field>
+            <field name="is_system" eval="True"/>
+            <field name="aggregation_priority">60</field>
+            <field name="polling_hours">1.0</field>
+        </record>
+
+        <!-- Consegnato parzialmente: alcuni colli sì, altri no (NON terminale). -->
+        <record id="status_partially_delivered" model="centrivo.shipment.status">
+            <field name="name">Consegnato parzialmente</field>
+            <field name="code">partially_delivered</field>
+            <field name="sequence">40</field>
+            <field name="is_system" eval="True"/>
+            <field name="is_partial" eval="True"/>
+            <field name="aggregation_priority">70</field>
+            <field name="polling_hours">4.0</field>
+        </record>
+
+        <!-- Consegnato: tutti i colli arrivati (TERMINALE). -->
+        <record id="status_delivered" model="centrivo.shipment.status">
+            <field name="name">Consegnato</field>
+            <field name="code">delivered</field>
+            <field name="sequence">50</field>
+            <field name="is_system" eval="True"/>
+            <field name="is_terminal" eval="True"/>
+            <field name="aggregation_priority">10</field>
+            <field name="polling_hours">0.0</field>
+        </record>
+
+        <!-- Giacenza: fermo in deposito (problematico). -->
+        <record id="status_held" model="centrivo.shipment.status">
+            <field name="name">Giacenza</field>
+            <field name="code">held</field>
+            <field name="sequence">60</field>
+            <field name="is_system" eval="True"/>
+            <field name="is_problematic" eval="True"/>
+            <field name="aggregation_priority">90</field>
+            <field name="polling_hours">12.0</field>
+            <field name="alert_if_persists" eval="True"/>
+            <field name="alert_on_entry" eval="True"/>
+        </record>
+
+        <!-- Anomalia / eccezione: problema generico segnalato dal corriere. -->
+        <record id="status_exception" model="centrivo.shipment.status">
+            <field name="name">Anomalia / eccezione</field>
+            <field name="code">exception</field>
+            <field name="sequence">70</field>
+            <field name="is_system" eval="True"/>
+            <field name="is_problematic" eval="True"/>
+            <field name="aggregation_priority">100</field>
+            <field name="polling_hours">6.0</field>
+            <field name="alert_on_entry" eval="True"/>
+            <field name="alert_suggests_claim" eval="True"/>
+        </record>
+
+        <!-- Reso al mittente: tornato indietro (TERMINALE). -->
+        <record id="status_returned" model="centrivo.shipment.status">
+            <field name="name">Reso al mittente</field>
+            <field name="code">returned</field>
+            <field name="sequence">80</field>
+            <field name="is_system" eval="True"/>
+            <field name="is_terminal" eval="True"/>
+            <field name="is_problematic" eval="True"/>
+            <field name="aggregation_priority">95</field>
+            <field name="polling_hours">0.0</field>
+            <field name="alert_on_entry" eval="True"/>
+            <field name="alert_suggests_claim" eval="True"/>
+        </record>
+
+        <!-- Sconosciuto: codice non mappato (fallback + log). -->
+        <record id="status_unknown" model="centrivo.shipment.status">
+            <field name="name">Sconosciuto</field>
+            <field name="code">unknown</field>
+            <field name="sequence">90</field>
+            <field name="is_system" eval="True"/>
+            <field name="aggregation_priority">20</field>
+            <field name="polling_hours">12.0</field>
+        </record>
+
+    </data>
+</odoo>
