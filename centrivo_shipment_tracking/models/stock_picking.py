@@ -106,6 +106,7 @@ class StockPicking(models.Model):
             company_id = picking.company_id.id or self.env.company.id
             shipment = Shipment.create({
                 "picking_id": picking.id,
+                "partner_id": picking._centrivo_get_shipment_partner().id,
                 "tracker_code": tracker or False,
                 "ship_date": picking.date_done or fields.Datetime.now(),
                 "lifecycle": "active",
@@ -127,6 +128,44 @@ class StockPicking(models.Model):
             else:
                 shipment._log("resolve_carrier", "skip",
                               picking._centrivo_resolution_diagnostic())
+
+    def _centrivo_get_shipment_partner(self):
+        """Destinatario corretto della spedizione tracciata (centralizzato qui).
+
+        Regola generale: il partner del trasferimento (comportamento storico,
+        invariato per i picking NON dropship).
+
+        Eccezione DROPSHIP: per i picking con picking_type_id.code == 'dropship'
+        il partner del picking è il FORNITORE, mentre il destinatario reale
+        (cliente finale) è sul purchase.order collegato, campo dest_address_id.
+        Usarlo evita che la zona SLA (TASK_59) si calcoli sulla geografia del
+        fornitore invece che del cliente.
+
+        Lettura DIFENSIVA dei campi 'purchase' (purchase_id/purchase_line_id/
+        dest_address_id): esistono perché purchase_stock è installato; se non lo
+        fosse, il modulo non si rompe e si ricade sul partner del picking.
+        Guardia: se non si ottiene un indirizzo valido, NON si peggiora il
+        comportamento odierno.
+        """
+        self.ensure_one()
+        default_partner = self.partner_id
+        picking_type = self.picking_type_id
+        if not (picking_type and picking_type.code == "dropship"):
+            return default_partner
+
+        purchase = False
+        # Via primaria: purchase_id (computed NON stored), letto solo se presente.
+        if "purchase_id" in self._fields:
+            purchase = self.purchase_id or False
+        # Fallback robusto su dati STORED: move_ids.purchase_line_id.order_id.
+        if not purchase and "purchase_line_id" in self.env["stock.move"]._fields:
+            orders = self.move_ids.mapped("purchase_line_id.order_id")
+            purchase = orders[:1] if orders else False
+
+        if (purchase and "dest_address_id" in purchase._fields
+                and purchase.dest_address_id):
+            return purchase.dest_address_id
+        return default_partner
 
     def _centrivo_resolution_diagnostic(self):
         """Messaggio diagnostico sul perché il corriere non si è risolto (per il log)."""

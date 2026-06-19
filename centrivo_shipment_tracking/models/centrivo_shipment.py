@@ -56,8 +56,13 @@ class CentrivoShipment(models.Model):
     sale_order_id = fields.Many2one(
         "sale.order", string="Ordine", related="picking_id.sale_id", store=True)
     partner_id = fields.Many2one(
-        "res.partner", string="Destinatario",
-        related="picking_id.partner_id", store=True)
+        "res.partner", string="Destinatario", index=True,
+        help="Destinatario della spedizione. Di norma è il partner del "
+             "trasferimento; per i picking DROPSHIP è il CLIENTE FINALE preso dal "
+             "purchase.order collegato (dest_address_id), non il fornitore. "
+             "Valorizzato alla creazione (vedi stock.picking."
+             "_centrivo_get_shipment_partner). Le dimensioni geografiche per la "
+             "zona SLA derivano da questo campo.")
     delivery_carrier_id = fields.Many2one(
         "delivery.carrier", string="Metodo di consegna",
         related="picking_id.carrier_id", store=True)
