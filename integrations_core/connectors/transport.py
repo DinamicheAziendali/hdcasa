@@ -211,3 +211,70 @@ class CsvTransport(TransportBase):
     def download(self, filename):
         """Scarica un file dal server remoto. Da implementare se servirà."""
         raise NotImplementedError
+
+
+class SftpTransport(TransportBase):
+    """Trasporto SFTP (paramiko) per scaricare file da un server fornitore.
+
+    Usato dal modulo centrivo_sync_fornitori per prelevare i file di catalogo
+    (xlsx) e giacenze (csv) dei fornitori dropship. Auth semplice
+    username/password. Sola lettura lato fornitore (download). I file hanno NOME
+    FISSO in root dell'FTP: il path viene passato esplicitamente, nessuna logica
+    "prendi il più recente".
+
+    NB sicurezza: la password NON viene MAI loggata né inserita nei messaggi di
+    errore. paramiko è importato LOCALMENTE (come `requests` in RestTransport):
+    così il modulo si installa/carica anche se paramiko non è presente
+    nell'immagine; l'errore scatta solo al momento del download reale, con un
+    messaggio chiaro per l'amministratore.
+    """
+
+    def __init__(self, host=None, username=None, password=None, port=22,
+                 timeout=30):
+        super().__init__(base_url=host, timeout=timeout)
+        self.host = host
+        self.username = username
+        self.password = password
+        self.port = int(port or 22)
+
+    def download(self, remote_path):
+        """Scarica `remote_path` dal server SFTP e ne ritorna i byte grezzi.
+
+        Solleva TransportError su qualunque problema (paramiko assente,
+        connessione, autenticazione, file mancante), senza mai esporre la
+        password.
+        """
+        try:
+            import paramiko
+        except ImportError:
+            raise TransportError(
+                "paramiko non è disponibile nell'immagine Odoo: necessario per "
+                "il trasporto SFTP. Aggiungerlo alle dipendenze dell'immagine "
+                "(es. pip install paramiko) e riavviare.")
+
+        transport = None
+        sftp = None
+        try:
+            transport = paramiko.Transport((self.host, self.port))
+            transport.connect(username=self.username, password=self.password)
+            sftp = paramiko.SFTPClient.from_transport(transport)
+            with sftp.open(remote_path, "rb") as handle:
+                return handle.read()
+        except TransportError:
+            raise
+        except Exception as exc:
+            # Mai includere la password nel messaggio.
+            raise TransportError(
+                "Errore SFTP verso %s:%s (file %s): %s" % (
+                    self.host, self.port, remote_path, exc))
+        finally:
+            try:
+                if sftp is not None:
+                    sftp.close()
+            except Exception:
+                pass
+            try:
+                if transport is not None:
+                    transport.close()
+            except Exception:
+                pass

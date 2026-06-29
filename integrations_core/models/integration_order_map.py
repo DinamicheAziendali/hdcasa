@@ -15,6 +15,11 @@ from odoo import fields, models
 class IntegrationOrderMap(models.Model):
     _name = "centrivo.order.map"
     _description = "Registro ordini importati dai marketplace"
+    # mail.thread + mail.activity.mixin (TASK_70): consentono di agganciare un'ATTIVITÀ
+    # Odoo all'ordine in errore (segnalazione a un operatore, vedi connettore
+    # BricoBravo _record_order_error). Niente chatter forzata in UI: serve solo
+    # l'infrastruttura attività/messaggi.
+    _inherit = ["mail.thread", "mail.activity.mixin"]
     _order = "create_date desc"
 
     channel_id = fields.Many2one(

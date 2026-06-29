@@ -64,6 +64,14 @@ class IntegrationChannel(models.Model):
              "(comportamento standard). Seleziona un team esistente: il "
              "connettore non lo crea.")
 
+    # Responsabile degli errori di import (TASK_70): se valorizzato, le attività di
+    # segnalazione errore (ordine non importato) vengono assegnate a questo utente; se
+    # vuoto, l'attività è assegnata all'utente che esegue il pull (fallback).
+    error_activity_user_id = fields.Many2one(
+        "res.users", string="Responsabile errori import",
+        help="Utente a cui assegnare l'attività Odoo quando l'import di un ordine "
+             "fallisce. Se vuoto, l'attività va all'utente che esegue il pull.")
+
     # Credenziale: SOLO il campo, mai il valore nel codice. Va inserita qui
     # nell'istanza (o iniettata in ambiente). La chiave reale è fornita
     # separatamente, non versionata.
@@ -184,6 +192,14 @@ class IntegrationChannel(models.Model):
         string="Feed catalogo (CSV)", copy=False, readonly=True)
     catalog_feed_generated_at = fields.Datetime(
         string="Feed catalogo generato il", copy=False, readonly=True)
+    # TASK_85: la generazione del feed catalogo è ASINCRONA in background. Il
+    # bottone marca il canale 'in coda' (pending) e un cron esecutore ATTIVO lo
+    # elabora fuori dal worker web (la generazione sincrona, sull'intero catalogo,
+    # rischiava il timeout della richiesta e la memoria del worker).
+    catalog_feed_pending = fields.Boolean(
+        string="Feed catalogo in coda", copy=False, readonly=True, default=False,
+        help="Quando attivo, la generazione del feed catalogo è stata accodata e "
+             "verrà eseguita in background dal cron esecutore.")
 
     # URL pronti da copiare nel pannello BricoBravo (TASK_27): computed NON
     # stored, ricalcolati sempre freschi e dipendenti da export_token (se l'utente
@@ -333,10 +349,54 @@ class IntegrationChannel(models.Model):
     # EXPORT feed catalogo completo (TASK_24)
     # ------------------------------------------------------------------
     def action_generate_catalog_feed(self):
-        """Bottone/azione: rigenera SUBITO il feed catalogo per i canali.
+        """Bottone: ACCODA la generazione del feed catalogo in BACKGROUND (TASK_85).
 
-        Gemello di action_generate_stock_feed: delega al connettore
-        (generate_catalog_feed) e isola gli errori per canale su job.log.
+        La generazione del catalogo è pesante (intero catalogo + risoluzione delle
+        immagini): se girasse nel worker WEB della richiesta rischierebbe il limite
+        di tempo (limit_time_real) e, su cataloghi grandi, la memoria del worker.
+        Qui marchiamo il canale come 'in coda' e lasciamo che il cron esecutore
+        (ATTIVO) la elabori fuori dal worker web — gemello del job di import
+        asincrono. Il file pronto si vede da 'Feed catalogo generato il' e dal Log
+        operazioni.
+        """
+        queued = self.filtered("active")
+        if not queued:
+            return self._catalog_feed_notification(
+                "Nessun canale attivo da generare.", kind="warning")
+        queued.write({"catalog_feed_pending": True})
+        self._arm_catalog_feed_cron()
+        return self._catalog_feed_notification(
+            "Generazione del feed catalogo avviata in background. Il file sarà "
+            "pronto a breve (vedi 'generato il' e il Log operazioni).")
+
+    def _catalog_feed_notification(self, message, kind="info"):
+        """Notifica non bloccante per il bottone (UX dell'accodamento)."""
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "title": "Feed catalogo",
+                "message": message,
+                "type": kind,
+                "sticky": False,
+            },
+        }
+
+    @api.model
+    def _arm_catalog_feed_cron(self):
+        """Triggera il cron esecutore il prima possibile (dopo il commit)."""
+        cron = self.env.ref(
+            "integrations_core.cron_run_catalog_feed_jobs",
+            raise_if_not_found=False)
+        if cron:
+            cron._trigger()
+
+    def _run_generate_catalog_feed(self):
+        """Genera DAVVERO il feed catalogo per i canali (sola lettura).
+
+        Delega al connettore (generate_catalog_feed) e isola gli errori per canale
+        su job.log. Eseguito SEMPRE su un worker cron (mai web): dal cron esecutore
+        background o dal cron pianificato.
         """
         for channel in self:
             if not channel.active:
@@ -360,14 +420,40 @@ class IntegrationChannel(models.Model):
         return True
 
     @api.model
+    def cron_run_catalog_feed_jobs(self):
+        """Cron ESECUTORE (ATTIVO): genera il feed catalogo dei canali 'in coda'.
+
+        Elabora UN canale 'pending' per tick (poi si ri-arma) così ogni esecuzione
+        resta breve e la memoria piatta (la generazione è a blocchi, vedi
+        connettore). Pulisce eventuali pending rimasti su canali non più attivi.
+        """
+        channel = self.search(
+            [("catalog_feed_pending", "=", True), ("active", "=", True)],
+            order="write_date", limit=1)
+        if not channel:
+            stale = self.search([("catalog_feed_pending", "=", True)])
+            if stale:
+                stale.write({"catalog_feed_pending": False})
+            return
+        channel._run_generate_catalog_feed()
+        channel.write({"catalog_feed_pending": False})
+        self.env.cr.commit()
+        # Ri-arma finché restano canali in coda: generazioni back-to-back.
+        if self.search_count(
+                [("catalog_feed_pending", "=", True), ("active", "=", True)]):
+            self._arm_catalog_feed_cron()
+
+    @api.model
     def cron_generate_catalog_feeds(self):
-        """ir.cron (gemello, frequenza più bassa): rigenera il feed catalogo.
+        """ir.cron pianificato (frequenza bassa, INATTIVO di default): rigenera il
+        feed catalogo di tutti i canali attivi.
 
         Il catalogo cambia meno spesso del feed prezzi/giacenze, quindi è un cron
-        separato con intervallo più ampio. Anch'esso DISATTIVO di default.
+        separato con intervallo più ampio. Gira già su un worker cron, quindi
+        genera DIRETTAMENTE (non riaccoda).
         """
         channels = self.search([("active", "=", True)])
-        channels.action_generate_catalog_feed()
+        channels._run_generate_catalog_feed()
         return True
 
     # ------------------------------------------------------------------

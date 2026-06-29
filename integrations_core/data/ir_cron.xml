@@ -67,5 +67,24 @@
             <field name="active" eval="False"/>
         </record>
 
+        <!-- 5) ESECUTORE feed catalogo in BACKGROUND (TASK_85, ATTIVO).
+             A differenza dei cron OPZIONALI qui sopra (active=False), questo è il
+             MOTORE che esegue le generazioni ACCODATE dal bottone "Genera feed
+             catalogo ora": deve essere ATTIVO perché l'accodamento parta davvero,
+             fuori dal worker WEB (la generazione sincrona rischiava timeout/OOM).
+             Elabora UN canale 'pending' per tick e si ri-arma (ir.cron._trigger):
+             generazioni back-to-back senza attendere l'intervallo, che resta solo
+             una rete di sicurezza. Gemello del cron esecutore dei job di import. -->
+        <record id="cron_run_catalog_feed_jobs" model="ir.cron">
+            <field name="name">Integrations: esegui generazione feed catalogo (background)</field>
+            <field name="model_id" ref="model_centrivo_channel"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_run_catalog_feed_jobs()</field>
+            <field name="interval_number">10</field>
+            <field name="interval_type">minutes</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="active" eval="True"/>
+        </record>
+
     </data>
 </odoo>

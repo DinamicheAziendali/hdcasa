@@ -51,6 +51,7 @@
                                 <group string="Import ordini">
                                     <field name="confirm_on_import"/>
                                     <field name="team_id"/>
+                                    <field name="error_activity_user_id"/>
                                 </group>
                             </group>
                         </page>
@@ -126,6 +127,7 @@
                             <group>
                                 <group string="Feed catalogo">
                                     <field name="catalog_feed_generated_at" readonly="1"/>
+                                    <field name="catalog_feed_pending" readonly="1"/>
                                 </group>
                             </group>
                             <p class="text-muted">

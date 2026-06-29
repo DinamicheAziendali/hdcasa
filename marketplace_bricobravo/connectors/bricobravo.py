@@ -49,6 +49,13 @@ _logger = logging.getLogger(__name__)
 MAX_PULL_PAGES = 10
 # Numero di caratteri del payload diagnostico salvato nel log.
 PAYLOAD_TRUNCATE = 2000
+# Tipo di attività nativo (To-Do) per la segnalazione degli errori di import (TASK_70).
+ERROR_ACTIVITY_XMLID = "mail.mail_activity_data_todo"
+# Dimensione del blocco di prodotti elaborati per il feed catalogo (TASK_85):
+# dopo ogni blocco la cache ORM viene svuotata, così la memoria resta piatta a
+# prescindere dalla dimensione del catalogo (il prefetch sull'intero recordset
+# era la causa dell'OOM, aggravata dai BLOB immagine ora non più letti).
+CATALOG_FEED_BATCH = 500
 
 
 def _truncate(text, limit=PAYLOAD_TRUNCATE):
@@ -254,8 +261,27 @@ class BricoBravoConnector(MarketplaceConnector):
             total_received += len(data)
 
             # STRATO 2: importa ogni ordine come sale.order (idempotente).
+            # Resilienza (TASK_70): un'eccezione NON gestita su UN ordine non deve mai
+            # interrompere il loop né far rollbackare il pull degli altri. La si cattura
+            # qui come rete di sicurezza (import_order già protegge le sue fasi interne),
+            # si conta come errore e si lascia traccia su order.map=error + job.log.
             for external_order in data:
-                result = self.import_order(external_order)
+                try:
+                    result = self.import_order(external_order)
+                except Exception as exc:  # noqa: BLE001
+                    result = False
+                    failed_id = str(
+                        external_order.get("id_order")
+                        or external_order.get("id")
+                        or external_order.get("vtex_id_order") or "")
+                    if failed_id:
+                        self._record_order_error(
+                            failed_id, "Errore import ordine: %s" % exc)
+                    else:
+                        self._log(JobLog, company, "error",
+                                  "Ordine senza identificativo non importato: %s"
+                                  % _truncate(json.dumps(external_order,
+                                                         ensure_ascii=False)))
                 if result:
                     total_imported += 1
                 else:
@@ -385,8 +411,17 @@ class BricoBravoConnector(MarketplaceConnector):
             return False
 
         # --- 2) PARTNER (con pulizia dati; invoice_info non bloccante) -----
-        partner = self._find_or_create_partner(external_order)
-        shipping_partner = self._find_or_create_shipping(external_order, partner)
+        # Resilienza (TASK_70): la creazione cliente/indirizzo può sollevare (es. un
+        # vincolo di validazione fiscale italiana su dati anomali). Un singolo ordine
+        # "veleno" NON deve abbattere il pull: si registra l'errore (order.map=error +
+        # job.log + attività) e si esce, lasciando l'ordine non-acquisito e ritentabile.
+        try:
+            partner = self._find_or_create_partner(external_order)
+            shipping_partner = self._find_or_create_shipping(external_order, partner)
+        except Exception as exc:  # noqa: BLE001
+            self._record_order_error(
+                external_id, "Errore creazione cliente: %s" % exc)
+            return False
 
         # --- 3) CREA (o RIUSA) il sale.order via i modelli Odoo (mai SQL) --
         # RIUSO (anti-duplicato): se questo è un RETRY di un ordine che aveva
@@ -461,6 +496,10 @@ class BricoBravoConnector(MarketplaceConnector):
             order_map = existing
         else:
             order_map = OrderMap.create(map_vals)
+
+        # Ordine ora importato: chiudi l'eventuale attività di errore aperta (TASK_70)
+        # creata da un giro precedente fallito, così non resta rumore pendente.
+        self._close_error_activity(order_map, external_id)
 
         JobLog.create({
             "channel_id": channel.id,
@@ -971,66 +1010,59 @@ class BricoBravoConnector(MarketplaceConnector):
             return False
 
         Product = self.env["product.product"].with_company(company)
+        # order="id" → ordine STABILE: l'elaborazione a blocchi (slice) resta
+        # coerente anche se il run dura qualche secondo.
         products = Product.search(
-            [("product_tmpl_id.product_tag_ids", "in", tags.ids)])
+            [("product_tmpl_id.product_tag_ids", "in", tags.ids)], order="id")
 
+        total = len(products)
         rows = []
         skipped = 0
-        for product in products:
-            barcode = (product.barcode or "").strip()
-            if not barcode:
-                skipped += 1
-                _logger.info("Catalogo: prodotto %s senza barcode, saltato.",
-                             product.display_name)
-                continue
+        # Elaborazione a BLOCCHI con svuotamento della cache ORM: l'accesso ai
+        # campi prodotto (e in passato ai BLOB immagine) faceva esplodere la RAM
+        # via prefetch sull'intero recordset → worker ucciso (signal 9). Qui ogni
+        # blocco viene elaborato e poi la cache invalidata, così la memoria resta
+        # piatta a prescindere dalla dimensione del catalogo. Le immagini NON
+        # vengono mai lette come byte: la loro ESISTENZA è risolta con una query
+        # su ir.attachment (vedi _image_attachment_sets).
+        for offset in range(0, total, CATALOG_FEED_BATCH):
+            batch = products[offset:offset + CATALOG_FEED_BATCH]
+            main_img_ids, gallery_img_ids = self._image_attachment_sets(batch)
+            for product in batch:
+                barcode = (product.barcode or "").strip()
+                if not barcode:
+                    skipped += 1
+                    _logger.info("Catalogo: prodotto %s senza barcode, saltato.",
+                                 product.display_name)
+                    continue
 
-            sell = self._pricelist_price(sell_pl, product)
-            disc = self._pricelist_price(disc_pl, product)
-            if sell is None:
-                sell = disc
-            if disc is None:
-                disc = sell
-            if sell is None:
-                skipped += 1
-                _logger.info(
-                    "Catalogo: prodotto %s (%s) senza prezzo, saltato.",
-                    product.display_name, barcode)
-                continue
+                sell = self._pricelist_price(sell_pl, product)
+                disc = self._pricelist_price(disc_pl, product)
+                if sell is None:
+                    sell = disc
+                if disc is None:
+                    disc = sell
+                if sell is None:
+                    skipped += 1
+                    _logger.info(
+                        "Catalogo: prodotto %s (%s) senza prezzo, saltato.",
+                        product.display_name, barcode)
+                    continue
 
-            qty = self._available_quantity(product, channel)
-            sale_delay = int(product.sale_delay or 0)
-            processing = sale_delay if sale_delay > 0 else channel.processing_time_default
+                rows.append(self._build_catalog_row(
+                    product, channel, sell, disc,
+                    main_img_ids, gallery_img_ids))
 
-            name = self._mapped_value(product, channel.map_field_name) \
-                or (product.name or "")
-            category = self._mapped_value(product, channel.map_field_category)
-            url = self._mapped_value(product, channel.map_field_url)
-            description = self._mapped_value(product, channel.map_field_description)
-            brand = self._brand_value(product, channel)
-            images = self._image_urls(product, channel)
-            vat = self._vat_value(product, channel)
-
-            row = [
-                barcode,                      # Sku EAN/GTIN
-                category,                     # Category
-                brand,                        # Brand
-                name,                         # ProductName
-                url,                          # Url
-                self._fmt_weight(product.weight),  # Weight
-                description,                  # Product Description
-            ]
-            # Image URL 1..10 (le mancanti restano vuote)
-            for index in range(10):
-                row.append(images[index] if index < len(images) else "")
-            row += [
-                self._fmt_price(sell),        # Selling Price (Price to GPP)
-                self._fmt_price(disc),        # Discounted Price
-                vat,                          # Vat
-                int(round(qty)),              # Available Quantity
-                processing,                   # Processing Time
-                (product.default_code or "").strip(),  # Product_Code
-            ]
-            rows.append(row)
+            # Svuota la cache ORM del blocco prima del prossimo: libera memoria.
+            self.env.invalidate_all()
+            # Progresso visibile su cataloghi grandi (oltre al log finale).
+            if total > CATALOG_FEED_BATCH:
+                done = min(offset + CATALOG_FEED_BATCH, total)
+                self._log_export(
+                    "success",
+                    "Feed catalogo: elaborati %s/%s prodotti (%s righe finora)."
+                    % (done, total, len(rows)),
+                    operation="export_catalog_feed")
 
         content = CsvSerializer().serialize(CATALOG_FEED_HEADERS, rows)
         self._save_catalog_feed(content)
@@ -1040,6 +1072,87 @@ class BricoBravoConnector(MarketplaceConnector):
             "barcode/prezzo)." % (len(rows), skipped),
             operation="export_catalog_feed")
         return len(rows)
+
+    def _build_catalog_row(self, product, channel, sell, disc,
+                           main_img_ids, gallery_img_ids):
+        """Costruisce UNA riga del feed catalogo (23 colonne) per il prodotto.
+
+        `sell`/`disc` sono già risolti (con fallback bidirezionale) dal chiamante;
+        le immagini sono risolte per ESISTENZA tramite id-set (da ir.attachment),
+        senza MAI leggere i byte (vedi _image_attachment_sets / _image_urls).
+        """
+        qty = self._available_quantity(product, channel)
+        sale_delay = int(product.sale_delay or 0)
+        processing = sale_delay if sale_delay > 0 else channel.processing_time_default
+
+        name = self._mapped_value(product, channel.map_field_name) \
+            or (product.name or "")
+        category = self._mapped_value(product, channel.map_field_category)
+        url = self._mapped_value(product, channel.map_field_url)
+        description = self._mapped_value(product, channel.map_field_description)
+        brand = self._brand_value(product, channel)
+        images = self._image_urls(product, channel, main_img_ids, gallery_img_ids)
+        vat = self._vat_value(product, channel)
+
+        row = [
+            (product.barcode or "").strip(),  # Sku EAN/GTIN
+            category,                         # Category
+            brand,                            # Brand
+            name,                             # ProductName
+            url,                              # Url
+            self._fmt_weight(product.weight),  # Weight
+            description,                      # Product Description
+        ]
+        # Image URL 1..10 (le mancanti restano vuote)
+        for index in range(10):
+            row.append(images[index] if index < len(images) else "")
+        row += [
+            self._fmt_price(sell),        # Selling Price (Price to GPP)
+            self._fmt_price(disc),        # Discounted Price
+            vat,                          # Vat
+            int(round(qty)),              # Available Quantity
+            processing,                   # Processing Time
+            (product.default_code or "").strip(),  # Product_Code
+        ]
+        return row
+
+    def _image_attachment_sets(self, products):
+        """Insiemi degli id CON immagine, risolti via ir.attachment (NIENTE byte).
+
+        I campi immagine (`image_1920`) sono memorizzati come ir.attachment
+        (attachment=True): sapere QUALI prodotti/immagini hanno un blob si ottiene
+        con una sola query sugli allegati (res_model/res_field/res_id), senza MAI
+        caricare i byte in memoria. Leggere `image_1920` in un loop, invece,
+        forzava il prefetch dei BLOB a piena risoluzione sull'intero recordset →
+        memoria saturata e worker ucciso (la causa del bug TASK_85).
+
+        Ritorna (main_img_ids, gallery_img_ids):
+          - main_img_ids: id dei product.product con image_1920 valorizzato;
+          - gallery_img_ids: id dei product.image (galleria) con image_1920.
+        """
+        Attachment = self.env["ir.attachment"].sudo()
+        product_ids = products.ids
+        main_img_ids = set()
+        if product_ids:
+            main_img_ids = set(Attachment.search([
+                ("res_model", "=", "product.product"),
+                ("res_field", "=", "image_1920"),
+                ("res_id", "in", product_ids),
+            ]).mapped("res_id"))
+
+        gallery_img_ids = set()
+        if "product.image" in self.env:
+            # Solo gli id delle immagini di galleria (relazione leggera, niente
+            # byte); poi una query allegati per sapere quali hanno il blob.
+            image_ids = products.mapped(
+                "product_tmpl_id.product_template_image_ids").ids
+            if image_ids:
+                gallery_img_ids = set(Attachment.search([
+                    ("res_model", "=", "product.image"),
+                    ("res_field", "=", "image_1920"),
+                    ("res_id", "in", image_ids),
+                ]).mapped("res_id"))
+        return main_img_ids, gallery_img_ids
 
     def _save_catalog_feed(self, content):
         """Salva il CSV catalogo pre-generato sul canale (storage)."""
@@ -1085,7 +1198,7 @@ class BricoBravoConnector(MarketplaceConnector):
         brand = product.product_brand_id
         return brand.name if brand else ""
 
-    def _image_urls(self, product, channel):
+    def _image_urls(self, product, channel, main_img_ids, gallery_img_ids):
         """COSTRUISCE gli URL immagine verso la rotta pubblica del controller (max 10).
 
         Le immagini NON sono servite dal /web/image nativo (su Community puro il
@@ -1093,6 +1206,11 @@ class BricoBravoConnector(MarketplaceConnector):
         (TASK_26), che legge i byte in sudo e li serve solo per i prodotti
         esportabili. Gli URL portano lo STESSO export_token del feed (se Angelo lo
         rigenera, cambiano sia gli URL feed sia quelli immagine — coerente).
+
+        L'ESISTENZA delle immagini è passata come id-set (main_img_ids /
+        gallery_img_ids, vedi _image_attachment_sets): NON si accede mai a
+        `image_1920`, che caricherebbe i byte a piena risoluzione dell'intero
+        recordset via prefetch (era la causa dell'OOM, TASK_85).
 
           - Image URL 1 (principale) = se il prodotto ha image_1920:
             {base_url}/integrations/feed/image/<channel_id>/product/<product_id>?token=<export_token>
@@ -1111,7 +1229,7 @@ class BricoBravoConnector(MarketplaceConnector):
         urls = []
 
         # 1) Immagine principale (product.product) — serve byte dalla rotta.
-        if product.image_1920:
+        if product.id in main_img_ids:
             urls.append("%s/product/%s?token=%s" % (prefix, product.id, token))
 
         # 2..10) Galleria product.image (accesso dinamico, opzionale).
@@ -1120,7 +1238,7 @@ class BricoBravoConnector(MarketplaceConnector):
                 product.product_tmpl_id, "product_template_image_ids", False)
             if gallery:
                 for image in gallery.sorted("sequence"):
-                    if not image.image_1920:
+                    if image.id not in gallery_img_ids:
                         continue
                     urls.append("%s/gallery/%s?token=%s" % (prefix, image.id, token))
                     if len(urls) >= 10:
@@ -1346,13 +1464,15 @@ class BricoBravoConnector(MarketplaceConnector):
 
         # Dati fiscali da invoice_info SOLO se presente e SOLO se i campi
         # esistono (l10n_it / l10n_it_edi installati).
+        # NB (TASK_70): NON si scrive l10n_it_pa_index (Codice Destinatario SDI). Il
+        # campo BricoBravo `send_invoice_to` NON è un codice destinatario: è il METODO
+        # di fatturazione (es. "SDI"/"PEC"). Scriverlo in l10n_it_pa_index violava il
+        # vincolo fiscale "6/7 caratteri" (es. "SDI" = 3) e abbatteva l'intero pull.
         if info:
             self._set_if_field(vals, Partner, "l10n_it_codice_fiscale",
                                info.get("fiscal_code"))
             self._set_if_field(vals, Partner, "l10n_it_pec_email",
                                info.get("sdi_pec"))
-            self._set_if_field(vals, Partner, "l10n_it_pa_index",
-                               info.get("send_invoice_to"))
         return Partner.create(vals)
 
     def _fill_contact_if_empty(self, partner, email, mobile):
@@ -1492,8 +1612,9 @@ class BricoBravoConnector(MarketplaceConnector):
             vals["sale_order_id"] = sale_order.id
         if existing:
             existing.write(vals)
+            order_map = existing
         else:
-            OrderMap.create(vals)
+            order_map = OrderMap.create(vals)
         env["centrivo.job.log"].create({
             "channel_id": channel.id,
             "operation": "import_order",
@@ -1503,3 +1624,58 @@ class BricoBravoConnector(MarketplaceConnector):
             "company_id": company.id,
         })
         _logger.warning("Import ordine %s in errore: %s", external_id, message)
+        # Segnalazione all'operatore via ATTIVITÀ Odoo sull'ordine in errore (TASK_70).
+        self._schedule_error_activity(order_map, external_id, message)
+        return order_map
+
+    def _schedule_error_activity(self, order_map, external_id, message):
+        """Crea un'attività Odoo (To-Do) sulla order.map in errore (TASK_70).
+
+        Segnala il problema a un operatore SENZA email. Idempotente: non duplica se ne
+        esiste già una APERTA con lo stesso summary su questa order.map (evita valanghe
+        ai retry dei cron). Assegnatario: channel.error_activity_user_id se valorizzato,
+        altrimenti l'utente che esegue il pull (env.user). L'attività non deve mai far
+        fallire l'import: ogni errore qui è isolato e loggato.
+        """
+        summary = "Errore import ordine BricoBravo #%s" % external_id
+        try:
+            Activity = self.env["mail.activity"].sudo()
+            existing = Activity.search_count([
+                ("res_model", "=", "centrivo.order.map"),
+                ("res_id", "=", order_map.id),
+                ("summary", "=", summary),
+            ])
+            if existing:
+                return
+            user = self.channel.error_activity_user_id or self.env.user
+            order_map.activity_schedule(
+                act_type_xmlid=ERROR_ACTIVITY_XMLID,
+                summary=summary,
+                note=message,
+                user_id=user.id,
+            )
+        except Exception as exc:  # noqa: BLE001 - la segnalazione non deve mai bloccare
+            _logger.warning(
+                "Attività errore import non creata per ordine %s: %s",
+                external_id, exc)
+
+    def _close_error_activity(self, order_map, external_id):
+        """Chiude (done) le attività di errore aperte quando l'ordine è importato.
+
+        Identificate per summary (come in _schedule_error_activity): si chiudono SOLO
+        quelle generate dal sistema per QUESTO ordine, non eventuali attività manuali.
+        Isolata: un errore qui non invalida l'import già riuscito.
+        """
+        summary = "Errore import ordine BricoBravo #%s" % external_id
+        try:
+            activities = self.env["mail.activity"].sudo().search([
+                ("res_model", "=", "centrivo.order.map"),
+                ("res_id", "=", order_map.id),
+                ("summary", "=", summary),
+            ])
+            if activities:
+                activities.action_feedback(feedback="Ordine importato correttamente.")
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning(
+                "Chiusura attività errore non riuscita per ordine %s: %s",
+                external_id, exc)

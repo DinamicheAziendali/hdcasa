@@ -9,16 +9,18 @@
 # di configurazione sul record "centrivo.channel", valorizzati in ambiente.
 {
     "name": "Integrations Core",
-    "version": "18.0.2.1.0",
+    "version": "18.0.2.4.0",
     "license": "OPL-1",
     "category": "Connector",
-    "summary": "Layer condiviso per i connettori marketplace: contratti astratti, trasporti REST/CSV, mapping SKU e corrieri, registro ordini e log operazioni.",
+    "summary": "Layer condiviso per i connettori marketplace: contratti astratti, trasporti REST/CSV/SFTP, mapping SKU e corrieri, registro ordini e log operazioni.",
     "author": "Angelo Margarella",
     "website": "https://www.hdcasa.it",
     # Dipendenze: vendite (sale.order), magazzino (stock), gestione vendite.
     # delivery → modello delivery.carrier (mapping corrieri); stock_delivery →
     # campi nativi carrier_id/carrier_tracking_ref su stock.picking (Strato 3b).
-    "depends": ["base", "sale_management", "stock", "delivery", "stock_delivery"],
+    # mail → attività (mail.activity) sugli ordini in errore (TASK_70).
+    "depends": ["base", "mail", "sale_management", "stock", "delivery",
+                "stock_delivery"],
     "data": [
         "security/ir.model.access.csv",
         "security/integration_security.xml",
