@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Lista job import (sola lettura: i job nascono dal wizard) -->
+    <record id="view_sync_import_job_list" model="ir.ui.view">
+        <field name="name">centrivo.sync.import.job.list</field>
+        <field name="model">centrivo.sync.import.job</field>
+        <field name="arch" type="xml">
+            <list string="Job import" create="false"
+                  decoration-success="state == 'done'"
+                  decoration-info="state in ('queued','running')"
+                  decoration-danger="state == 'error'"
+                  decoration-muted="state == 'cancelled'">
+                <field name="create_date"/>
+                <field name="channel_id"/>
+                <field name="upload_filename"/>
+                <field name="state" widget="badge"/>
+                <field name="phase"/>
+                <field name="row_cursor"/>
+                <field name="total_rows"/>
+                <field name="created_count"/>
+                <field name="updated_count"/>
+                <field name="skipped_count"/>
+                <field name="error_count"/>
+                <field name="image_ok"/>
+                <field name="image_failed"/>
+                <field name="image_skipped" optional="hide"/>
+                <field name="message"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Form job import -->
+    <record id="view_sync_import_job_form" model="ir.ui.view">
+        <field name="name">centrivo.sync.import.job.form</field>
+        <field name="model">centrivo.sync.import.job</field>
+        <field name="arch" type="xml">
+            <form string="Job import">
+                <header>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="queued,running,done"/>
+                    <button name="action_cancel" type="object" string="Annulla"
+                            invisible="state not in ('queued','running')"/>
+                    <button name="action_requeue" type="object"
+                            string="Rimetti in coda"
+                            invisible="state not in ('error','cancelled','done')"
+                            help="Riprende dai cursori correnti (idempotente): completa righe/immagini mancanti."/>
+                    <button name="action_run_images" type="object"
+                            string="Completa immagini (FASE 2)" class="btn-primary"
+                            invisible="state == 'running'"
+                            help="(Ri)avvia la FASE 2: scansiona il file e scarica le immagini mancanti sui prodotti già creati (idempotente)."/>
+                </header>
+                <sheet>
+                    <group>
+                        <group string="Origine">
+                            <field name="channel_id" readonly="1"/>
+                            <field name="upload_filename" readonly="1"/>
+                            <field name="phase" readonly="1"/>
+                            <field name="started_at" readonly="1"/>
+                            <field name="finished_at" readonly="1"/>
+                            <field name="company_id"
+                                   groups="base.group_multi_company" readonly="1"/>
+                        </group>
+                        <group string="Avanzamento">
+                            <label for="row_cursor" string="Righe (elaborate/totali)"/>
+                            <div>
+                                <field name="row_cursor" class="oe_inline" readonly="1"/>
+                                /
+                                <field name="total_rows" class="oe_inline" readonly="1"/>
+                            </div>
+                            <field name="created_count" readonly="1"/>
+                            <field name="updated_count" readonly="1"/>
+                            <field name="skipped_count" readonly="1"/>
+                            <field name="error_count" readonly="1"/>
+                            <label for="image_cursor" string="Immagini: righe (elaborate/totali)"/>
+                            <div>
+                                <field name="image_cursor" class="oe_inline" readonly="1"/>
+                                /
+                                <field name="image_total" class="oe_inline" readonly="1"/>
+                            </div>
+                            <field name="image_ok" readonly="1"/>
+                            <field name="image_failed" readonly="1"/>
+                            <field name="image_skipped" readonly="1"/>
+                        </group>
+                    </group>
+                    <field name="message" readonly="1"/>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_sync_import_job" model="ir.actions.act_window">
+        <field name="name">Job import</field>
+        <field name="res_model">centrivo.sync.import.job</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

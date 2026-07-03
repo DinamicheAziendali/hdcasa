@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Cron che ESEGUE i job di import prodotti in background (Flusso A).
+
+        A differenza dei cron OPZIONALI dei connettori (pull/feed, nascono
+        active=False), questo è il MOTORE DI ESECUZIONE di un'azione esplicita
+        dell'operatore: deve essere ATTIVO perché un job accodato dal wizard
+        parta davvero. Nasce quindi active=True.
+
+        Funzionamento: ogni tick elabora UN solo chunk del job attivo e si
+        ri-arma (ir.cron._trigger) finché resta lavoro → chunk back-to-back senza
+        attendere l'intervallo. L'intervallo periodico (5 min) è solo una rete di
+        sicurezza se un trigger andasse perso. NB: in esecuzione normale Odoo deve
+        girare con i cron abilitati (config: max_cron_threads >= 1).
+
+        noupdate="1": attivazione/frequenza modificate da UI non vengono
+        sovrascritte agli aggiornamenti del modulo.
+    -->
+    <data noupdate="1">
+        <record id="cron_run_import_jobs" model="ir.cron">
+            <field name="name">Sync Fornitori: esegui import prodotti in background</field>
+            <field name="model_id" ref="model_centrivo_sync_import_job"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_run_import_jobs()</field>
+            <field name="interval_number">5</field>
+            <field name="interval_type">minutes</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="active" eval="True"/>
+        </record>
+
+        <!--
+            Cron ESECUTORE del Flusso B (aggiornamento giacenze SFTP → stock
+            del magazzino del fornitore). Come il cron d'import sopra, è ATTIVO
+            ma INNOCUO finché nessun canale è da servire: ad ogni tick aggiorna
+            i canali con "Feed giacenze attivo" (ricorrente, ogni 6h) e quelli
+            con un "Aggiorna giacenze ora" in coda (lancio manuale, innescato
+            subito via _trigger). L'interruttore on/off reale è PER-FORNITORE
+            (flag stock_feed_active sul canale), non il cron.
+        -->
+        <record id="cron_run_stock_feeds" model="ir.cron">
+            <field name="name">Sync Fornitori: aggiorna giacenze (Flusso B)</field>
+            <field name="model_id" ref="model_centrivo_sync_channel"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_run_stock_feeds()</field>
+            <field name="interval_number">6</field>
+            <field name="interval_type">hours</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="active" eval="True"/>
+        </record>
+    </data>
+</odoo>

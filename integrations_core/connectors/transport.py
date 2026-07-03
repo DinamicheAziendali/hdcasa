@@ -278,3 +278,68 @@ class SftpTransport(TransportBase):
                     transport.close()
             except Exception:
                 pass
+
+
+class FtpTransport(TransportBase):
+    """Trasporto FTP / FTPS-esplicito (ftplib, stdlib) per scaricare file.
+
+    Alternativa a SftpTransport per i fornitori che espongono un FTP CLASSICO
+    (porta 21) invece dell'SFTP/SSH (porta 22). Alcuni fornitori dropship (es.
+    Cardinale) offrono solo FTP: questo trasporto colma quel caso senza
+    dipendenze esterne (ftplib è nella stdlib Python).
+
+    - `use_tls=False` → FTP in chiaro (le credenziali viaggiano non cifrate: usare
+      solo se il fornitore non offre alternative);
+    - `use_tls=True`  → FTPS ESPLICITO (AUTH TLS su porta 21): stessa porta
+      dell'FTP ma con canale di controllo e dati cifrati (`prot_p`).
+
+    Modalità PASSIVA (default di ftplib) per attraversare NAT/firewall. Timeout
+    sul socket per non restare appesi se la porta non risponde. Sola lettura
+    (download). NB sicurezza: la password NON viene MAI loggata né inserita nei
+    messaggi di errore.
+    """
+
+    def __init__(self, host=None, username=None, password=None, port=21,
+                 use_tls=False, timeout=30):
+        super().__init__(base_url=host, timeout=timeout)
+        self.host = host
+        self.username = username
+        self.password = password
+        self.port = int(port or 21)
+        self.use_tls = use_tls
+
+    def download(self, remote_path):
+        """Scarica `remote_path` dal server FTP e ne ritorna i byte grezzi.
+
+        Solleva TransportError su qualunque problema (connessione, auth, file
+        mancante), senza mai esporre la password.
+        """
+        import ftplib
+        import io
+
+        ftp = None
+        try:
+            ftp = (ftplib.FTP_TLS(timeout=self.timeout) if self.use_tls
+                   else ftplib.FTP(timeout=self.timeout))
+            ftp.connect(self.host, self.port)
+            ftp.login(self.username or "anonymous", self.password or "")
+            if self.use_tls:
+                # Cifra anche il canale DATI (non solo il controllo).
+                ftp.prot_p()
+            buffer = io.BytesIO()
+            ftp.retrbinary("RETR %s" % remote_path, buffer.write)
+            return buffer.getvalue()
+        except Exception as exc:
+            # Mai includere la password nel messaggio.
+            raise TransportError(
+                "Errore FTP verso %s:%s (file %s): %s" % (
+                    self.host, self.port, remote_path, exc))
+        finally:
+            if ftp is not None:
+                try:
+                    ftp.quit()
+                except Exception:
+                    try:
+                        ftp.close()
+                    except Exception:
+                        pass

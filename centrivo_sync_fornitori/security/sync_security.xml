@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Record rules multi-azienda (company_id) sui modelli del sync fornitori.
+        Pattern Odoo standard: rule GLOBALE con domain
+        ['|', ('company_id','=',False), ('company_id','in',company_ids)].
+    -->
+    <record id="sync_channel_company_rule" model="ir.rule">
+        <field name="name">centrivo.sync.channel multi-company</field>
+        <field name="model_id" ref="model_centrivo_sync_channel"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="sync_supply_company_rule" model="ir.rule">
+        <field name="name">centrivo.sync.supply multi-company</field>
+        <field name="model_id" ref="model_centrivo_sync_supply"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="sync_column_map_company_rule" model="ir.rule">
+        <field name="name">centrivo.sync.column.map multi-company</field>
+        <field name="model_id" ref="model_centrivo_sync_column_map"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="sync_import_job_company_rule" model="ir.rule">
+        <field name="name">centrivo.sync.import.job multi-company</field>
+        <field name="model_id" ref="model_centrivo_sync_import_job"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+</odoo>

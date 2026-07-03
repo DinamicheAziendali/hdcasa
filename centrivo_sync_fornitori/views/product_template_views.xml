@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Campi dropship sul form prodotto (pagina dedicata nel notebook). -->
+    <record id="view_product_template_form_dropship" model="ir.ui.view">
+        <field name="name">product.template.form.dropship</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Dropship" name="dropship">
+                    <group>
+                        <group string="Origine dropship">
+                            <field name="is_dropship"/>
+                            <field name="dropship_supplier_id"/>
+                        </group>
+                        <group string="Categorie fornitore (grezze)">
+                            <field name="dropship_macro"/>
+                            <field name="dropship_categoria"/>
+                            <field name="dropship_gerarchia"/>
+                        </group>
+                    </group>
+                    <p class="text-muted">
+                        Campi alimentati dall'import catalogo del fornitore
+                        dropship. Le categorie fornitore sono grezze e non
+                        forzano la categoria Odoo (mappatura prevista in Fase B).
+                    </p>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

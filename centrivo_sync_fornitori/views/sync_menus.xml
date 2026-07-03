@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Menu radice "Sync Fornitori" -->
+    <menuitem id="menu_sync_fornitori_root"
+              name="Sync Fornitori"
+              sequence="91"/>
+
+    <menuitem id="menu_sync_channel"
+              name="Fornitori dropship"
+              parent="menu_sync_fornitori_root"
+              action="action_sync_channel"
+              sequence="10"/>
+
+    <menuitem id="menu_sync_supply"
+              name="Disponibilità dropship"
+              parent="menu_sync_fornitori_root"
+              action="action_sync_supply"
+              sequence="20"/>
+
+    <menuitem id="menu_sync_import_job"
+              name="Job import"
+              parent="menu_sync_fornitori_root"
+              action="action_sync_import_job"
+              sequence="30"/>
+</odoo>

@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Lista canali fornitore -->
+    <record id="view_sync_channel_list" model="ir.ui.view">
+        <field name="name">centrivo.sync.channel.list</field>
+        <field name="model">centrivo.sync.channel</field>
+        <field name="arch" type="xml">
+            <list string="Fornitori dropship">
+                <field name="name"/>
+                <field name="dropship_supplier_id"/>
+                <field name="last_catalog_import"/>
+                <field name="supply_count"/>
+                <field name="active"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Form canale fornitore -->
+    <record id="view_sync_channel_form" model="ir.ui.view">
+        <field name="name">centrivo.sync.channel.form</field>
+        <field name="model">centrivo.sync.channel</field>
+        <field name="arch" type="xml">
+            <form string="Fornitore dropship">
+                <header>
+                    <button name="action_open_import_wizard" type="object"
+                            string="Importa prodotti" class="btn-primary"/>
+                    <button name="action_run_stock_feed_now" type="object"
+                            string="Aggiorna giacenze ora"
+                            invisible="not stock_warehouse_id"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group string="Identità">
+                            <field name="name"/>
+                            <field name="dropship_supplier_id"/>
+                            <field name="active"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                        <group string="Stato import">
+                            <field name="last_import_state"/>
+                            <field name="last_import_message"/>
+                            <field name="last_catalog_import" readonly="1"/>
+                            <field name="supply_count" readonly="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Mappatura colonne" name="mapping">
+                            <p class="text-muted">
+                                Mappatura salvata per questo fornitore: viene
+                                ri-proposta dal wizard di import (bottone "Importa
+                                prodotti"). Si può anche pre-compilare qui.
+                            </p>
+                            <field name="column_map_ids">
+                                <list editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="source_header"/>
+                                    <field name="destination_kind"/>
+                                    <field name="special_target"
+                                           invisible="destination_kind != 'special'"
+                                           required="destination_kind == 'special'"/>
+                                    <field name="dest_field_id"
+                                           invisible="destination_kind != 'field'"
+                                           required="destination_kind == 'field'"/>
+                                    <field name="active_in_run"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Import in background" name="jobs">
+                            <p class="text-muted">
+                                Storico degli import lanciati dal wizard. Ogni
+                                import gira in BACKGROUND a blocchi (nessun limite
+                                di tempo della pagina web); puoi seguire qui
+                                l'avanzamento e, se serve, riprenderlo.
+                            </p>
+                            <field name="import_job_ids" readonly="1">
+                                <list decoration-success="state == 'done'"
+                                      decoration-info="state in ('queued','running')"
+                                      decoration-danger="state == 'error'"
+                                      decoration-muted="state == 'cancelled'">
+                                    <field name="create_date"/>
+                                    <field name="upload_filename"/>
+                                    <field name="state" widget="badge"/>
+                                    <field name="phase"/>
+                                    <field name="row_cursor"/>
+                                    <field name="total_rows"/>
+                                    <field name="created_count"/>
+                                    <field name="updated_count"/>
+                                    <field name="skipped_count"/>
+                                    <field name="error_count"/>
+                                    <field name="image_ok"/>
+                                    <field name="image_failed"/>
+                                    <field name="message"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Giacenze (Flusso B)" name="sftp">
+                            <p class="text-muted">
+                                Aggiornamento disponibilità del fornitore: scaricata
+                                dal server del fornitore (SFTP, FTP o FTPS) e scritta
+                                come stock Odoo nel magazzino dedicato del fornitore.
+                                In valorizzazione escludi questo magazzino (merce non
+                                di proprietà). Il bottone "Aggiorna giacenze ora"
+                                lavora in background. La password non viene mai
+                                scritta nei log.
+                            </p>
+                            <group>
+                                <group string="Connessione (SFTP / FTP / FTPS)">
+                                    <field name="transfer_protocol"/>
+                                    <field name="sftp_host"/>
+                                    <field name="sftp_port"/>
+                                    <field name="sftp_username"/>
+                                    <field name="sftp_password" password="True"/>
+                                    <field name="path_giacenze"/>
+                                </group>
+                                <group string="Destinazione e mappatura">
+                                    <field name="stock_warehouse_id"
+                                           domain="[('company_id', '=', company_id)]"/>
+                                    <field name="stock_code_header"/>
+                                    <field name="stock_qty_header"/>
+                                    <field name="stock_feed_active"/>
+                                    <field name="last_stock_sync" readonly="1"/>
+                                    <field name="stock_feed_state" readonly="1"/>
+                                    <field name="stock_feed_cursor" readonly="1"
+                                           invisible="stock_feed_state != 'running'"/>
+                                    <field name="stock_feed_total" readonly="1"
+                                           invisible="stock_feed_state != 'running'"/>
+                                    <field name="stock_feed_pending" readonly="1"/>
+                                </group>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_sync_channel" model="ir.actions.act_window">
+        <field name="name">Fornitori dropship</field>
+        <field name="res_model">centrivo.sync.channel</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>
