@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_centrivo_carrier_performance_list" model="ir.ui.view">
+        <field name="name">centrivo.carrier.performance.list</field>
+        <field name="model">centrivo.carrier.performance</field>
+        <field name="arch" type="xml">
+            <list string="Performance corrieri" create="false" edit="false"
+                  default_order="window_days, score desc">
+                <field name="tracker_code"/>
+                <field name="zone_id"/>
+                <field name="window_days"/>
+                <field name="sample_size"/>
+                <field name="on_time_rate"/>
+                <field name="held_rate"/>
+                <field name="exception_rate"/>
+                <field name="late_rate"/>
+                <field name="avg_transit_hours"/>
+                <field name="score"/>
+                <field name="computed_on"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_centrivo_carrier_performance_pivot" model="ir.ui.view">
+        <field name="name">centrivo.carrier.performance.pivot</field>
+        <field name="model">centrivo.carrier.performance</field>
+        <field name="arch" type="xml">
+            <pivot string="Performance corrieri" sample="1">
+                <field name="tracker_code" type="row"/>
+                <field name="zone_id" type="col"/>
+                <field name="score" type="measure"/>
+                <field name="on_time_rate" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_centrivo_carrier_performance_search" model="ir.ui.view">
+        <field name="name">centrivo.carrier.performance.search</field>
+        <field name="model">centrivo.carrier.performance</field>
+        <field name="arch" type="xml">
+            <search string="Performance corrieri">
+                <field name="tracker_code"/>
+                <field name="zone_id"/>
+                <filter name="window_7" string="Ultimi 7 giorni"
+                        domain="[('window_days', '=', 7)]"/>
+                <filter name="window_14" string="Ultimi 14 giorni"
+                        domain="[('window_days', '=', 14)]"/>
+                <group expand="0" string="Raggruppa per">
+                    <filter name="group_tracker" string="Corriere"
+                            context="{'group_by': 'tracker_code'}"/>
+                    <filter name="group_zone" string="Zona"
+                            context="{'group_by': 'zone_id'}"/>
+                    <filter name="group_window" string="Finestra"
+                            context="{'group_by': 'window_days'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_centrivo_carrier_performance" model="ir.actions.act_window">
+        <field name="name">Performance corrieri</field>
+        <field name="res_model">centrivo.carrier.performance</field>
+        <field name="view_mode">list,pivot</field>
+        <field name="search_view_id"
+               ref="view_centrivo_carrier_performance_search"/>
+        <field name="context">{'search_default_window_7': 1}</field>
+    </record>
+</odoo>

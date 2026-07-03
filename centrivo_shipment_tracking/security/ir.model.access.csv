@@ -18,3 +18,7 @@ access_centrivo_sla_rule_user,centrivo.sla.rule user read,model_centrivo_sla_rul
 access_centrivo_sla_rule_manager,centrivo.sla.rule manager,model_centrivo_sla_rule,base.group_system,1,1,1,1
 access_centrivo_shipment_alert_user,centrivo.shipment.alert user,model_centrivo_shipment_alert,base.group_user,1,1,1,0
 access_centrivo_shipment_alert_manager,centrivo.shipment.alert manager,model_centrivo_shipment_alert,base.group_system,1,1,1,1
+access_centrivo_shipment_report_user,centrivo.shipment.report user read,model_centrivo_shipment_report,base.group_user,1,0,0,0
+access_centrivo_carrier_performance_user,centrivo.carrier.performance user read,model_centrivo_carrier_performance,base.group_user,1,0,0,0
+access_centrivo_carrier_performance_manager,centrivo.carrier.performance manager,model_centrivo_carrier_performance,base.group_system,1,1,1,1
+access_centrivo_shipment_dashboard_tile_user,centrivo.shipment.dashboard.tile user,model_centrivo_shipment_dashboard_tile,base.group_user,1,1,1,1

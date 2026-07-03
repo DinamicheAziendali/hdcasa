@@ -38,5 +38,23 @@
             <field name="user_id" ref="base.user_root"/>
             <field name="active" eval="False"/>
         </record>
+
+        <!--
+            Ricalcolo giornaliero delle metriche di performance corriere × zona
+            (finestre 7/14 gg) che alimentano dashboard e (in futuro) la scelta
+            etichetta. A differenza dei cron sopra nasce ATTIVO: è un refresh
+            leggero, read-only sulle spedizioni, che scrive solo sulla propria
+            tabella; senza di esso la pagella resterebbe vuota.
+        -->
+        <record id="cron_compute_carrier_performance" model="ir.cron">
+            <field name="name">Tracking: calcola performance corrieri</field>
+            <field name="model_id" ref="model_centrivo_carrier_performance"/>
+            <field name="state">code</field>
+            <field name="code">model.cron_compute_carrier_performance()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="active" eval="True"/>
+        </record>
     </data>
 </odoo>

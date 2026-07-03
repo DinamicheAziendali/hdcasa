@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_centrivo_shipment_report_pivot" model="ir.ui.view">
+        <field name="name">centrivo.shipment.report.pivot</field>
+        <field name="model">centrivo.shipment.report</field>
+        <field name="arch" type="xml">
+            <pivot string="Analisi spedizioni" sample="1">
+                <field name="delivery_carrier_id" type="row"/>
+                <field name="ship_date" interval="month" type="col"/>
+                <field name="nbr" type="measure"/>
+                <field name="transit_hours" type="measure"/>
+                <field name="on_time_count" type="measure"/>
+                <field name="late_count" type="measure"/>
+                <field name="held_count" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_centrivo_shipment_report_graph" model="ir.ui.view">
+        <field name="name">centrivo.shipment.report.graph</field>
+        <field name="model">centrivo.shipment.report</field>
+        <field name="arch" type="xml">
+            <graph string="Analisi spedizioni" type="bar" sample="1">
+                <field name="delivery_carrier_id"/>
+                <field name="nbr" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <record id="view_centrivo_shipment_report_search" model="ir.ui.view">
+        <field name="name">centrivo.shipment.report.search</field>
+        <field name="model">centrivo.shipment.report</field>
+        <field name="arch" type="xml">
+            <search string="Analisi spedizioni">
+                <field name="delivery_carrier_id"/>
+                <field name="sla_zone_id"/>
+                <field name="dest_country_id"/>
+                <field name="status_id"/>
+                <group expand="0" string="Raggruppa per">
+                    <filter name="group_carrier" string="Corriere"
+                            context="{'group_by': 'delivery_carrier_id'}"/>
+                    <filter name="group_zone" string="Zona"
+                            context="{'group_by': 'sla_zone_id'}"/>
+                    <filter name="group_country" string="Nazione"
+                            context="{'group_by': 'dest_country_id'}"/>
+                    <filter name="group_team" string="Canale di vendita"
+                            context="{'group_by': 'team_id'}"/>
+                    <filter name="group_month" string="Mese spedizione"
+                            context="{'group_by': 'ship_date:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_centrivo_shipment_report" model="ir.actions.act_window">
+        <field name="name">Analisi spedizioni</field>
+        <field name="res_model">centrivo.shipment.report</field>
+        <field name="view_mode">graph,pivot</field>
+        <field name="search_view_id" ref="view_centrivo_shipment_report_search"/>
+    </record>
+</odoo>

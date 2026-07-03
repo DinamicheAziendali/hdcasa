@@ -14,6 +14,7 @@ adattivo (cadenza per stato). Lo stato terminale chiude il ciclo (lifecycle=clos
 e la spedizione esce dal set di polling.
 """
 import logging
+from datetime import datetime, timedelta
 
 from odoo import api, fields, models
 
@@ -136,6 +137,19 @@ class CentrivoShipment(models.Model):
         "res.country.state", string="Provincia/Stato",
         related="partner_id.state_id", store=True)
     dest_zip = fields.Char(string="CAP", related="partner_id.zip", store=True)
+    sla_zone_id = fields.Many2one(
+        "centrivo.sla.zone", string="Zona SLA", store=True,
+        compute="_compute_sla_zone",
+        help="Zona di consegna risolta dalla geografia (per analitica e "
+             "performance corriere×zona). Ricalcolata se cambia la destinazione.")
+
+    # Flag "passata da" (stored): per metriche % giacenza/eccezione accurate
+    # (non solo lo stato corrente). Messi a True quando lo stato aggregato vi
+    # entra; mai resettati. 'returned' è terminale → basta lo stato corrente.
+    ever_held = fields.Boolean(
+        string="Passata da giacenza", default=False, copy=False)
+    ever_exception = fields.Boolean(
+        string="Passata da eccezione", default=False, copy=False)
 
     # --- Colli ed eventi ---------------------------------------------------
     parcel_ids = fields.One2many(
@@ -189,6 +203,13 @@ class CentrivoShipment(models.Model):
         for ship in self:
             ship.parcel_count = len(ship.parcel_ids)
             ship.event_count = len(ship.event_ids)
+
+    @api.depends("dest_country_id", "dest_state_id", "dest_zip", "company_id")
+    def _compute_sla_zone(self):
+        """Risolve la zona SLA dalla geografia del destinatario (stored)."""
+        Zone = self.env["centrivo.sla.zone"]
+        for ship in self:
+            ship.sla_zone_id = Zone._resolve_zone(ship)
 
     @api.depends("expected_delivery_date", "delivered_date", "status_id")
     def _compute_is_late(self):
@@ -499,6 +520,11 @@ class CentrivoShipment(models.Model):
             vals["delivered_date"] = fields.Datetime.now()
         if new_status.is_terminal:
             vals["lifecycle"] = "closed"
+        # Flag "passata da" per le metriche (mai resettati).
+        if new_status.code == "held" and not self.ever_held:
+            vals["ever_held"] = True
+        if new_status.code == "exception" and not self.ever_exception:
+            vals["ever_exception"] = True
         if vals:
             self.write(vals)
 
@@ -640,15 +666,39 @@ class CentrivoShipment(models.Model):
                 # Nessuna regola, terminale, o condizione decaduta → risolvi.
                 Alert._resolve_open(self, alert_type=ttype)
 
+    def _working_hours_between(self, start, end):
+        """Ore LAVORATIVE tra `start` e `end`, escludendo sabato e domenica.
+
+        Le durate SLA (rule.duration_hours) sono espresse in ORE ma contano solo
+        il tempo Lunedì-Venerdì: i corrieri non lavorano nel weekend, quindi un
+        affido del venerdì non deve "consumare" sabato e domenica (evita falsi
+        allarmi). Il calcolo procede per segmenti di giornata di calendario e
+        somma solo i secondi che cadono in un giorno feriale (weekday < 5).
+        Festivi NON gestiti (scelta: solo weekend).
+        """
+        if not start or not end or end <= start:
+            return 0.0
+        seconds = 0.0
+        cursor = start
+        while cursor < end:
+            next_midnight = datetime(
+                cursor.year, cursor.month, cursor.day) + timedelta(days=1)
+            segment_end = min(next_midnight, end)
+            if cursor.weekday() < 5:  # Lun=0 … Ven=4 ; Sab=5, Dom=6 esclusi
+                seconds += (segment_end - cursor).total_seconds()
+            cursor = segment_end
+        return seconds / 3600.0
+
     def _threshold_breached(self, ttype, rule, now):
-        """True se la soglia `ttype` è superata per questa spedizione (spec §4)."""
+        """True se la soglia `ttype` è superata per questa spedizione (spec §4).
+
+        Le ore sono conteggiate in GIORNI LAVORATIVI (sab/dom esclusi) via
+        `_working_hours_between`.
+        """
         self.ensure_one()
         duration = rule.duration_hours or 0.0
         if duration <= 0:
             return False
-
-        def _elapsed_hours(start):
-            return (now - start).total_seconds() / 3600.0
 
         if ttype == "missed_pickup":
             # Da validazione/affido del picking (ship_date); scatta se NON c'è
@@ -658,7 +708,7 @@ class CentrivoShipment(models.Model):
                 return False
             if self._first_effective_event():
                 return False
-            return _elapsed_hours(start) >= duration
+            return self._working_hours_between(start, now) >= duration
 
         if ttype == "late_delivery":
             # Dalla prima lettura effettiva; scatta se non consegnato entro.
@@ -667,14 +717,14 @@ class CentrivoShipment(models.Model):
                 return False
             if self.status_id and self.status_id.code == "delivered":
                 return False
-            return _elapsed_hours(ev.event_datetime) >= duration
+            return self._working_hours_between(ev.event_datetime, now) >= duration
 
         if ttype == "staleness":
             # Dall'ultimo evento ricevuto; scatta se il corriere è muto oltre.
             last = self._last_event_datetime() or self.ship_date
             if not last:
                 return False
-            return _elapsed_hours(last) >= duration
+            return self._working_hours_between(last, now) >= duration
 
         return False
 

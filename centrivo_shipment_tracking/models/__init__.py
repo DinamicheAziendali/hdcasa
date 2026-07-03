@@ -14,4 +14,7 @@ from . import centrivo_tracking_account
 from . import centrivo_shipment
 from . import centrivo_shipment_parcel
 from . import centrivo_shipment_event
+from . import centrivo_shipment_report
+from . import centrivo_carrier_performance
+from . import centrivo_shipment_dashboard
 from . import stock_picking

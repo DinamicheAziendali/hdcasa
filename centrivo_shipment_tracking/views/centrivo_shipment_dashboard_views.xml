@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Cruscotto operativo a SCHEDE colorate cliccabili (kanban, cross-versione). -->
+    <record id="view_centrivo_shipment_dashboard_tile_kanban" model="ir.ui.view">
+        <field name="name">centrivo.shipment.dashboard.tile.kanban</field>
+        <field name="model">centrivo.shipment.dashboard.tile</field>
+        <field name="arch" type="xml">
+            <kanban create="false" edit="false" records_draggable="false"
+                    default_order="sequence" class="o_centrivo_dashboard">
+                <field name="value"/>
+                <field name="name"/>
+                <field name="icon"/>
+                <field name="card_class"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_global_click p-0">
+                            <button name="action_open" type="object"
+                                    t-attf-class="btn border-0 w-100 text-start p-3 #{record.card_class.value}">
+                                <i t-attf-class="fa #{record.icon.value} fa-2x d-block mb-2"
+                                   role="img"/>
+                                <span style="font-size:2rem; font-weight:600; line-height:1;">
+                                    <t t-esc="record.value.value"/>
+                                </span>
+                                <div class="mt-1"><t t-esc="record.name.value"/></div>
+                            </button>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+
+    <!-- Apertura cruscotto: ricostruisce i tile e apre il kanban a schede. -->
+    <record id="action_centrivo_shipment_dashboard" model="ir.actions.server">
+        <field name="name">Cruscotto</field>
+        <field name="model_id" ref="model_centrivo_shipment_dashboard_tile"/>
+        <field name="state">code</field>
+        <field name="code">action = model.action_open_dashboard()</field>
+    </record>
+</odoo>

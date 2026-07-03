@@ -9,7 +9,7 @@
 # separati. Vedi Progetto_tracking_corrieri.md (Fase 1).
 {
     "name": "Centrivo Shipment Tracking",
-    "version": "18.0.1.14.0",
+    "version": "18.0.2.1.0",
     "license": "OPL-1",
     "category": "Inventory/Delivery",
     "summary": "Tracking spedizioni post-creazione: stato reale del collo/spedizione "
@@ -47,6 +47,9 @@
         "views/centrivo_sla_rule_views.xml",
         "views/centrivo_shipment_alert_views.xml",
         "views/centrivo_shipment_views.xml",
+        "views/centrivo_shipment_report_views.xml",
+        "views/centrivo_carrier_performance_views.xml",
+        "views/centrivo_shipment_dashboard_views.xml",
         "views/stock_picking_views.xml",
         "views/centrivo_shipment_menus.xml",
     ],

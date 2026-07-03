@@ -5,11 +5,31 @@
               name="Spedizioni"
               sequence="92"/>
 
+    <!-- Cruscotto operativo "cosa gestire oggi" (prima voce). -->
+    <menuitem id="menu_centrivo_shipment_dashboard"
+              name="Cruscotto"
+              parent="menu_centrivo_shipment_root"
+              action="action_centrivo_shipment_dashboard"
+              sequence="5"/>
+
     <menuitem id="menu_centrivo_shipment_tracking"
               name="Tracking spedizioni"
               parent="menu_centrivo_shipment_root"
               action="action_centrivo_shipment"
               sequence="10"/>
+
+    <!-- Analitica (pivot/grafico) e pagella corrieri (Fase 3). -->
+    <menuitem id="menu_centrivo_shipment_report"
+              name="Analisi"
+              parent="menu_centrivo_shipment_root"
+              action="action_centrivo_shipment_report"
+              sequence="25"/>
+
+    <menuitem id="menu_centrivo_carrier_performance"
+              name="Performance corrieri"
+              parent="menu_centrivo_shipment_root"
+              action="action_centrivo_carrier_performance"
+              sequence="30"/>
 
     <!-- Alert spedizioni (operativo): contatore/lista degli alert SLA e di stato. -->
     <menuitem id="menu_centrivo_shipment_alert"
