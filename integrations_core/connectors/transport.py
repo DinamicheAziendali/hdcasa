@@ -11,10 +11,30 @@ Questa è OSSATURA: i corpi sono minimi, con docstring chiari su cosa faranno.
 La logica reale (chiamate, retry, parsing) sarà rifinita nel task successivo
 testando sulla sandbox.
 """
+import ftplib
 import logging
 import time
 
 _logger = logging.getLogger(__name__)
+
+
+class _SessionReuseFTPTLS(ftplib.FTP_TLS):
+    """FTP_TLS che RIUSA la sessione TLS del canale di controllo sul canale dati.
+
+    Necessario con i server (es. FileZilla Server, vsftpd con require_ssl_reuse)
+    che pretendono la *TLS session resumption* sul data channel: senza, il
+    trasferimento fallisce con `SSL: SHUTDOWN_WHILE_IN_INIT`. La libreria standard
+    apre il canale dati con una sessione TLS nuova e il server lo abortisce.
+    Qui, dopo aver aperto il socket dati, lo si ri-avvolge riusando la sessione
+    del socket di controllo (`self.sock.session`, Python 3.6+).
+    """
+
+    def ntransfercmd(self, cmd, rest=None):
+        conn, size = ftplib.FTP.ntransfercmd(self, cmd, rest)
+        if self._prot_p:
+            conn = self.context.wrap_socket(
+                conn, server_hostname=self.host, session=self.sock.session)
+        return conn, size
 
 # Codici di stato HTTP considerati "ritentabili" (errore lato server).
 RETRYABLE_STATUS = (500, 502, 503, 504)
@@ -291,7 +311,9 @@ class FtpTransport(TransportBase):
     - `use_tls=False` → FTP in chiaro (le credenziali viaggiano non cifrate: usare
       solo se il fornitore non offre alternative);
     - `use_tls=True`  → FTPS ESPLICITO (AUTH TLS su porta 21): stessa porta
-      dell'FTP ma con canale di controllo e dati cifrati (`prot_p`).
+      dell'FTP ma con canale di controllo e dati cifrati (`prot_p`). Usa
+      `_SessionReuseFTPTLS` per riusare la sessione TLS sul canale dati, richiesto
+      dai server tipo FileZilla (altrimenti `SHUTDOWN_WHILE_IN_INIT`).
 
     Modalità PASSIVA (default di ftplib) per attraversare NAT/firewall. Timeout
     sul socket per non restare appesi se la porta non risponde. Sola lettura
@@ -314,12 +336,11 @@ class FtpTransport(TransportBase):
         Solleva TransportError su qualunque problema (connessione, auth, file
         mancante), senza mai esporre la password.
         """
-        import ftplib
         import io
 
         ftp = None
         try:
-            ftp = (ftplib.FTP_TLS(timeout=self.timeout) if self.use_tls
+            ftp = (_SessionReuseFTPTLS(timeout=self.timeout) if self.use_tls
                    else ftplib.FTP(timeout=self.timeout))
             ftp.connect(self.host, self.port)
             ftp.login(self.username or "anonymous", self.password or "")
