@@ -138,21 +138,42 @@ def _detect_separator(header_line):
 
 
 def parse_csv(content_bytes):
-    """Legge un csv (separatore rilevato) e ritorna (headers, rows)."""
+    """Legge un csv e ritorna (headers, rows).
+
+    Rileva il separatore SEPARATAMENTE per l'intestazione e per i dati: alcuni
+    fornitori esportano file MALFORMATI con delimitatori diversi (es. AEFFE:
+    header con '|' e righe dati con ';'). Se i due coincidono (caso normale) si
+    usa la lettura CSV standard, che supporta anche i campi quotati multi-riga; se
+    differiscono, header e righe vengono divisi ciascuno col PROPRIO separatore e
+    allineati per POSIZIONE.
+    """
     text = _decode_csv(content_bytes)
     if not text.strip():
         raise ValueError("File CSV vuoto.")
-    first_line = text.splitlines()[0] if text.splitlines() else text
-    separator = _detect_separator(first_line)
+    lines = text.splitlines()
+    header_line = next((ln for ln in lines if ln.strip()), "")
+    header_sep = _detect_separator(header_line)
+    data_line = next((ln for ln in lines[1:] if ln.strip()), header_line)
+    data_sep = _detect_separator(data_line)
 
-    reader = csv.reader(io.StringIO(text), delimiter=separator)
-    raw_rows = list(reader)
-    if not raw_rows:
-        raise ValueError("File CSV privo di righe.")
+    if header_sep == data_sep:
+        # CSV coerente: lettura standard (gestisce quoting/campi multi-riga).
+        reader = csv.reader(io.StringIO(text), delimiter=header_sep)
+        raw_rows = list(reader)
+        if not raw_rows:
+            raise ValueError("File CSV privo di righe.")
+        headers = [to_text(cell) for cell in raw_rows[0]]
+        data_rows = raw_rows[1:]
+    else:
+        # Header e dati con delimitatori DIVERSI: split indipendente riga per riga.
+        non_empty = [ln for ln in lines if ln.strip()]
+        headers = [to_text(cell)
+                   for cell in next(csv.reader([non_empty[0]], delimiter=header_sep))]
+        data_rows = [next(csv.reader([ln], delimiter=data_sep))
+                     for ln in non_empty[1:]]
 
-    headers = [to_text(cell) for cell in raw_rows[0]]
     rows = []
-    for raw in raw_rows[1:]:
+    for raw in data_rows:
         if not any((cell or "").strip() for cell in raw):
             continue
         record = {}

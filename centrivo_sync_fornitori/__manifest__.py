@@ -30,7 +30,7 @@
 # Vedi docs/sync-fornitori/01-specifica-import-csv.md per la specifica completa.
 {
     "name": "Centrivo - Sync Fornitori (Dropship)",
-    "version": "18.0.7.0.0",
+    "version": "18.0.8.0.0",
     "license": "OPL-1",
     "category": "Inventory/Purchase",
     "summary": "Caricamento prodotti dropship via wizard a mappatura dinamica "
