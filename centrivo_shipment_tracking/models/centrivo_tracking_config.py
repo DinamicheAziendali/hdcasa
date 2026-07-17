@@ -22,6 +22,11 @@ from odoo import api, fields, models
 # Garantisce la non-regressione per chi usa delivery.carrier come sorgente.
 DEFAULT_SOURCE_FIELD = "carrier_id"
 
+# Durata di default dello snooze (ore lavorative) quando un operatore preme
+# "Risolvi"/"Ignora" su un alert la cui condizione è ancora attiva. Usata se la
+# config è assente o valorizzata a <= 0.
+DEFAULT_SNOOZE_HOURS = 48.0
+
 
 class CentrivoTrackingConfig(models.Model):
     _name = "centrivo.tracking.config"
@@ -65,6 +70,18 @@ class CentrivoTrackingConfig(models.Model):
         help="Utenti a cui assegnare l'attività quando una spedizione entra in uno "
              "stato problematico configurato per generare alert. Gli alert da soglia "
              "temporale usano gli utenti della relativa regola SLA.")
+
+    # Snooze alert (spec §5): quando un operatore gestisce un alert ("Risolvi" o
+    # "Ignora") la cui condizione è ancora attiva, l'alert viene silenziato per
+    # questa durata invece di riaprirsi al polling/valutazione successiva. Ore
+    # LAVORATIVE (weekend esclusi), coerente con le soglie SLA.
+    alert_snooze_hours = fields.Float(
+        string="Snooze alert (ore lavorative)", default=DEFAULT_SNOOZE_HOURS,
+        help="Per quante ore LAVORATIVE (weekend esclusi) un alert resta silenziato "
+             "dopo che un operatore preme «Risolvi» o «Ignora». Entro questa finestra "
+             "la stessa condizione non riapre l'alert; scaduta, se la condizione "
+             "persiste, l'alert torna. Vale sia per «Risolvi» sia per «Ignora». "
+             "Le auto-risoluzioni (condizione rientrata) non usano snooze.")
 
     # --- Registrazione Centrivo License Server (FASE 1: best-effort) -------
     # Campi NON memorizzati: proxy verso gli ir.config_parameter del client licenza
@@ -145,6 +162,17 @@ class CentrivoTrackingConfig(models.Model):
         """Utenti di default per gli alert da trigger di stato (impostazioni globali)."""
         config = self.search([], limit=1)
         return config.default_alert_user_ids if config else self.env["res.users"].browse()
+
+    @api.model
+    def _get_snooze_hours(self):
+        """Durata snooze (ore lavorative) per «Risolvi»/«Ignora».
+
+        Fallback al default se la config è assente o valorizzata a <= 0 (uno snooze
+        nullo riproporrebbe subito l'alert, reintroducendo il problema).
+        """
+        config = self.search([], limit=1)
+        hours = config.alert_snooze_hours if config else 0.0
+        return hours if hours and hours > 0 else DEFAULT_SNOOZE_HOURS
 
     def action_open_config(self):
         """Apre il record di configurazione (usato dal menu)."""

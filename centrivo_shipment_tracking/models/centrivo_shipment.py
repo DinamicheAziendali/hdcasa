@@ -689,6 +689,35 @@ class CentrivoShipment(models.Model):
             cursor = segment_end
         return seconds / 3600.0
 
+    @api.model
+    def _add_working_hours(self, start, hours):
+        """Ritorna il datetime che segue `start` di `hours` ORE LAVORATIVE.
+
+        Inverso di `_working_hours_between`: avanza un cursore accumulando solo i
+        secondi dei giorni feriali (Lun-Ven) finché non copre `hours`. Un valore
+        <= 0 (o start assente) ritorna `start` invariato. Usato per lo snooze degli
+        alert (Risolvi/Ignora): un affido del venerdì non deve "consumare" il
+        weekend. Festivi NON gestiti (solo weekend), coerente con le soglie SLA.
+        """
+        if not start or not hours or hours <= 0:
+            return start
+        remaining = hours * 3600.0
+        cursor = start
+        while remaining > 0:
+            if cursor.weekday() < 5:  # Lun=0 … Ven=4 ; Sab=5, Dom=6 esclusi
+                next_midnight = datetime(
+                    cursor.year, cursor.month, cursor.day) + timedelta(days=1)
+                available = (next_midnight - cursor).total_seconds()
+                if available >= remaining:
+                    return cursor + timedelta(seconds=remaining)
+                remaining -= available
+                cursor = next_midnight
+            else:
+                # Giorno non lavorativo: salta all'inizio del giorno successivo.
+                cursor = datetime(
+                    cursor.year, cursor.month, cursor.day) + timedelta(days=1)
+        return cursor
+
     def _threshold_breached(self, ttype, rule, now):
         """True se la soglia `ttype` è superata per questa spedizione (spec §4).
 

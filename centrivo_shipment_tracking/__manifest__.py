@@ -9,7 +9,7 @@
 # separati. Vedi Progetto_tracking_corrieri.md (Fase 1).
 {
     "name": "Centrivo Shipment Tracking",
-    "version": "18.0.2.1.0",
+    "version": "18.0.2.2.0",
     "license": "OPL-1",
     "category": "Inventory/Delivery",
     "summary": "Tracking spedizioni post-creazione: stato reale del collo/spedizione "

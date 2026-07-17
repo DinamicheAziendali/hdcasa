@@ -22,6 +22,7 @@
                             <field name="default_alert_user_ids"
                                    widget="many2many_tags"
                                    options="{'no_create': True}"/>
+                            <field name="alert_snooze_hours"/>
                         </group>
                         <group string="Registrazione Centrivo">
                             <field name="centrivo_contact"/>

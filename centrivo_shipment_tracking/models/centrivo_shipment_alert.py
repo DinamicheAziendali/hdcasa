@@ -68,6 +68,16 @@ class CentrivoShipmentAlert(models.Model):
     trigger_date = fields.Datetime(
         string="Scattato il", default=fields.Datetime.now, copy=False)
     resolved_date = fields.Datetime(string="Risolto il", copy=False)
+    # Snooze a tempo: valorizzato SOLO dalle azioni manuali (Risolvi/Ignora). Entro
+    # questa data la stessa condizione NON riapre l'alert; oltre, se la condizione
+    # persiste, l'alert torna (snooze puro a tempo). Le auto-risoluzioni (condizione
+    # decaduta) lo lasciano vuoto, così una recidiva successiva rigenera l'alert.
+    snooze_until = fields.Datetime(
+        string="Silenziato fino a", copy=False,
+        help="Fin quando l'alert resta silenziato dopo un «Risolvi»/«Ignora» "
+             "manuale. Entro questa data la stessa condizione non lo riapre; oltre, "
+             "se la condizione è ancora attiva, l'alert torna. Vuoto per le "
+             "auto-risoluzioni (condizione rientrata).")
     state = fields.Selection(
         selection=[
             ("open", "Aperto"),
@@ -107,18 +117,32 @@ class CentrivoShipmentAlert(models.Model):
                     rule=False, trigger_status=False, suggested_claim=False):
         """Apre un alert se non già attivo per (shipment, alert_type). Idempotente.
 
-        Anti-duplicato sugli alert APERTI e IGNORATI (un "ignorato" sopprime la
-        riapertura finché la condizione non decade). Crea l'attività agli utenti
-        SOLO alla prima apertura: l'anti-duplicato evita attività ripetute a ogni
-        passaggio del motore.
+        Due livelli di anti-duplicato:
+          1) esiste già un alert APERTO dello stesso tipo → idempotenza;
+          2) esiste un alert gestito a mano (Risolvi/Ignora) ancora entro la finestra
+             di SNOOZE (snooze_until nel futuro) → la riapertura è soppressa anche se
+             la condizione è ancora vera. Scaduto lo snooze, o per un alert
+             auto-risolto (snooze_until vuoto), la riapertura procede normalmente.
+        L'attività agli utenti è creata SOLO alla prima apertura: l'anti-duplicato
+        evita attività ripetute a ogni passaggio del motore.
         """
-        existing = self.search([
+        now = fields.Datetime.now()
+        existing_open = self.search([
             ("shipment_id", "=", shipment.id),
             ("alert_type", "=", alert_type),
-            ("state", "in", ("open", "ignored")),
+            ("state", "=", "open"),
         ], limit=1)
-        if existing:
-            return existing
+        if existing_open:
+            return existing_open
+        snoozed = self.search([
+            ("shipment_id", "=", shipment.id),
+            ("alert_type", "=", alert_type),
+            ("state", "in", ("resolved", "ignored")),
+            ("snooze_until", "!=", False),
+            ("snooze_until", ">", now),
+        ], limit=1)
+        if snoozed:
+            return snoozed
         claim = bool(suggested_claim or (rule.suggest_claim if rule else False))
         alert = self.create({
             "shipment_id": shipment.id,
@@ -207,21 +231,41 @@ class CentrivoShipmentAlert(models.Model):
     # Azioni utente
     # ==================================================================
     def action_resolve(self):
-        """Bottone/azione: risolve manualmente gli alert selezionati."""
-        self._do_resolve()
+        """Bottone/azione: gestione manuale "Risolvi" (stato risolto + snooze)."""
+        self._handle_manual("resolved", "Alert SLA gestito (risolto).")
         return True
 
     def action_ignore(self):
-        """Bottone/azione: marca come ignorati (non riproposti finché aperti).
+        """Bottone/azione: gestione manuale "Ignora" (stato ignorato + snooze).
 
-        Chiude anche l'attività collegata: ignorare significa "preso atto, non
-        avvisarmi più", quindi lasciarla pendente sarebbe rumore incoerente.
+        Stessa soppressione di "Risolvi" (snooze a tempo, identica durata): cambia
+        solo l'etichetta di stato registrata (ignored vs resolved) per l'analitica.
         """
-        to_ignore = self.filtered(lambda a: a.state == "open")
-        to_ignore.write({
-            "state": "ignored",
-            "resolved_date": fields.Datetime.now(),
-        })
-        for alert in to_ignore:
-            alert._close_activities("Alert SLA ignorato.")
+        self._handle_manual("ignored", "Alert SLA ignorato.")
         return True
+
+    def _handle_manual(self, new_state, feedback):
+        """Gestione manuale di un alert aperto: stato finale + SNOOZE a tempo.
+
+        Sia "Risolvi" sia "Ignora" mettono l'alert in snooze per la durata globale
+        configurata (ore LAVORATIVE, weekend esclusi): entro quella finestra la
+        stessa condizione non riapre l'alert; scaduta, se la condizione persiste,
+        l'alert torna. Chiude anche l'attività (mail.activity) collegata. Opera solo
+        sugli alert aperti (i pulsanti sono visibili solo in stato 'open').
+        """
+        Shipment = self.env["centrivo.shipment"]
+        now = fields.Datetime.now()
+        hours = self.env["centrivo.tracking.config"]._get_snooze_hours()
+        deadline = Shipment._add_working_hours(now, hours)
+        log_op = "sla_resolve" if new_state == "resolved" else "sla_ignore"
+        verb = "risolto" if new_state == "resolved" else "ignorato"
+        for alert in self.filtered(lambda a: a.state == "open"):
+            alert.write({
+                "state": new_state,
+                "resolved_date": now,
+                "snooze_until": deadline,
+            })
+            alert._close_activities(feedback)
+            alert.shipment_id._log(
+                log_op, "ok",
+                "Alert %s con snooze fino al %s: %s." % (verb, deadline, alert.name))

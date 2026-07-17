@@ -16,6 +16,7 @@
                 <field name="suggested_claim"/>
                 <field name="state"/>
                 <field name="resolved_date" optional="hide"/>
+                <field name="snooze_until" optional="show"/>
                 <field name="company_id" groups="base.group_multi_company"/>
                 <button name="action_resolve" type="object"
                         string="Risolvi" icon="fa-check"
@@ -60,6 +61,8 @@
                         <group string="Stato">
                             <field name="trigger_date"/>
                             <field name="resolved_date"/>
+                            <field name="snooze_until"
+                                   invisible="state == 'open'"/>
                             <field name="suggested_claim"/>
                             <field name="company_id"
                                    groups="base.group_multi_company"/>
@@ -83,6 +86,10 @@
                         domain="[('state', '=', 'resolved')]"/>
                 <filter name="ignored" string="Ignorati"
                         domain="[('state', '=', 'ignored')]"/>
+                <filter name="snoozed" string="Silenziati (snooze attivo)"
+                        domain="[('snooze_until', '!=', False),
+                                 ('snooze_until', '&gt;',
+                                  datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'))]"/>
                 <separator/>
                 <filter name="threshold" string="Da soglia temporale"
                         domain="[('alert_kind', '=', 'threshold')]"/>
