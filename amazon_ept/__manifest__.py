@@ -5,13 +5,13 @@
 {
     # App information
     'name': 'Amazon Odoo Connector',
-    'version': '18.0.3.3',
+    'version': '18.0.5.0',
     'category': 'Sales',
     'license': 'OPL-1',
-    'summary': 'Amazon Odoo Connector helps you integrate & manage your Amazon Seller Account operations from Odoo. Save time, efforts and avoid errors due to manual data entry to boost your Amazon sales with this connector.Apart from Odoo Amazon Connector, we do have other ecommerce solutions or applications such as Woocommerce connector , Shopify connector , Magento Connector , and also we have solutions for Marketplace Integration such as Odoo eBay Connector , Odoo Walmart Connector , Odoo Bol.com Connector.Aside from ecommerce integration and ecommerce marketplace integration, we also provide solutions for various operations, such as shipping , logistics , shipping labels , and shipping carrier management with our shipping integration, known as the Shipstation connector.For the customers who are into Dropship business, we do provide EDI Integration that can help them manage their Dropshipping business with our Dropshipping integration or Dropshipper integration It is listed as Dropshipping EDI integration and Dropshipper EDI integration.Emipro applications can be searched with different keywords like Amazon integration , Shopify integration , Woocommerce integration , Magento integration , Amazon vendor center module , Amazon seller center module, Inter company transfer , Ebay integration , Bol.com integration, inventory management , warehouse transfer module , dropship and dropshipper integration and other Odoo integration application or module',
+    'summary': 'Amazon Odoo Connector',
     # Author
     'author': 'Emipro Technologies Pvt. Ltd.',
-    'website': 'https://www.dinamicheaziendali.it/',
+    'website': 'http://www.emiprotechnologies.com/',
     'maintainer': 'Emipro Technologies Pvt. Ltd.',
     # Dependencies
     'depends': ['iap', 'common_connector_library', 'rating'],
@@ -25,6 +25,7 @@
         'view/amazon_seller.xml',
         'view/product_view.xml',
         'wizard_views/shipment_report_configure_fulfillment_center_ept.xml',
+        'wizard_views/specific_order_process_wizard.xml',
         'view/shipping_report.xml',
         'wizard_views/amazon_outbound_order_wizard_view.xml',
         'view/sale_view.xml',
@@ -111,6 +112,8 @@
         'view/replacement_order_report.xml',
         'view/inbound_shipment_report_data_ept_view.xml',
         'view/awd_inbound_shipment_ept.xml',
+        'view/amazon_removal_tracking_report.xml',
+        'view/removal_transfer_view.xml'
     ],
     'assets': {
         'web.assets_backend': [
@@ -133,12 +136,12 @@
         "amazon_ept/**/*"
     ],
     # Odoo Store Specific
-    'images': ['static/description/Amazon_v19_2025_newyear_2026.gif'],
+    'images': ['static/description/main_screenshot.gif',],
     # Technical
     'installable': True,
     'auto_install': False,
     'live_test_url': 'https://www.emiprotechnologies.com/r/Eb6',
     'application': True,
-    'price': 379.20,
+    'price': 500.00,
     'currency': 'EUR',
 }

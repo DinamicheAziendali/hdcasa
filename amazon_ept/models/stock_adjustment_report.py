@@ -529,7 +529,10 @@ class StockAdjustmentReportHistory(models.Model):
                 fulfillment_center = fulfillment_center_obj.search(
                     [('center_code', '=', counter_vals.get('fulfillment_center_id', '')),
                      ('seller_id', '=', self.seller_id.id)], limit=1)
-                fn_warehouse = fulfillment_center.warehouse_id if fulfillment_center else warhouse_obj
+                if self.seller_id.amz_warehouse_ids and len(self.seller_id.amz_warehouse_ids) == 1 and not self.seller_id.is_fulfilment_center_configured:
+                    fn_warehouse = self.seller_id.amz_warehouse_ids
+                else:
+                    fn_warehouse = fulfillment_center.warehouse_id if fulfillment_center else warhouse_obj
                 if not fn_warehouse:
                     fn_warehouse = self.seller_id.instance_ids.fba_warehouse_id if len(
                         self.seller_id.instance_ids) == 1 else warhouse_obj
@@ -722,7 +725,10 @@ class StockAdjustmentReportHistory(models.Model):
                                                      ('seller_id', '=', self.seller_id.id)], limit=1)
             fulfillment_center_dict.update({line.get('Fulfillment Center', False): fulfillment_center or fcenter_obj})
         fulfillment_center = fulfillment_center_dict.get(line.get('Fulfillment Center', False), fcenter_obj)
-        warehouse = fulfillment_center.warehouse_id if fulfillment_center else self.env['stock.warehouse']
+        if self.seller_id.amz_warehouse_ids and len(self.seller_id.amz_warehouse_ids) == 1 and not self.seller_id.is_fulfilment_center_configured:
+            warehouse = self.seller_id.amz_warehouse_ids
+        else:
+            warehouse = fulfillment_center.warehouse_id if fulfillment_center else self.env['stock.warehouse']
         if not warehouse:
             warehouse = self.seller_id.instance_ids.fba_warehouse_id if len(self.seller_id.instance_ids) == 1 else False
         if not warehouse or (line.get('Disposition', '') == 'UNSELLABLE' and not warehouse.unsellable_location_id):
@@ -770,6 +776,7 @@ class StockAdjustmentReportHistory(models.Model):
         :return: {}
         """
         return {
+            'company_id': self.company_id.id,
             'product_uom_qty': abs(counter_vals.get('p_line_qty', 0.0)),
             'product_id': product.id,
             'product_uom': product.uom_id.id,
@@ -797,10 +804,11 @@ class StockAdjustmentReportHistory(models.Model):
             stock_move = stock_move_obj.browse(stock_move_id)
             stock_move._action_confirm()
             stock_move._action_assign()
-            stock_move._set_quantity_done(stock_move.product_uom_qty)
-            stock_move.picked = True
             try:
-                stock_move._action_done()
+                if self.seller_id.allow_negative_stock or stock_move.state == 'assigned':
+                    stock_move._set_quantity_done(stock_move.product_uom_qty)
+                    stock_move.picked = True
+                    stock_move._action_done()
             except Exception as e:
                 message = str(e)
                 if message.__contains__('You need to supply a Lot/Serial Number for product'):

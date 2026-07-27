@@ -11,6 +11,7 @@ from odoo import models, fields, api, _
 from odoo.exceptions import UserError
 
 AMAZON_UPLOAD_INVOICE = 'amazon_ept.ir_cron_auto_process_upload_invoices_to_amazon_seller_%d'
+AMAZON_CLEANUP_OLD_ATTACHMENTS = 'amazon_ept.ir_cron_cleanup_amazon_report_attachments_seller_%d'
 IMPORT_VCS_REPORT = 'amazon_ept.ir_cron_auto_process_vcs_tax_report_seller_%d'
 PROCESS_VCS_REPORT = 'amazon_ept.ir_cron_auto_process_vcs_tax_report_seller_%d'
 IMPORT_SETTLEMENT_REPORT = 'amazon_ept.ir_cron_auto_import_settlement_report_seller_%d'
@@ -114,6 +115,16 @@ class GlobalCronConfiguration(models.TransientModel):
     amz_auto_upload_tax_invoices_user_id = fields.Many2one(RES_USERS,
                                                            string="Amazon Invoices Upload User")
 
+    # Clean old Attachments
+    amz_auto_cleanup_old_attachments = fields.Boolean(string='Auto Cleanup Old Attachments?')
+    amz_auto_cleanup_old_attachments_next_execution = fields.Datetime('Cleanup Old Attachments Next Execution',
+                                                                      help='Cleanup old attachments next execution time')
+    amz_auto_cleanup_old_attachments_interval_number = fields.Integer('Cleanup Old Attachments Interval Number',
+                                                                      help="Cleanup old attachments repeat interval number.")
+    amz_auto_cleanup_old_attachments_interval_type = fields.Selection([('hours', 'Hours'), ('days', 'Days')],
+                                                                      'Cleanup Old Attachments Time Interval Unit')
+    amz_auto_cleanup_old_attachments_user_id = fields.Many2one(RES_USERS, string="Cleanup Old Attachments User")
+
     @api.onchange("amz_seller_id")
     def onchange_amazon_seller_id(self):
         """
@@ -126,6 +137,26 @@ class GlobalCronConfiguration(models.TransientModel):
         self.update_amz_vcs_report_cron_field(amz_seller)
         self.update_amz_vcs_report_process_cron_field(amz_seller)
         self.update_invoices_to_amazon_cron_field(amz_seller)
+        self.update_cleanup_old_attachments_cron_field(amz_seller)
+
+    def update_cleanup_old_attachments_cron_field(self, amz_seller):
+        """
+        This method is used to auto cleanup old attachments to amazon.
+        :param amz_seller : seller record.
+        """
+        if amz_seller:
+            amz_cleanup_old_attachments_cron_exist = self.env.ref(AMAZON_CLEANUP_OLD_ATTACHMENTS % amz_seller.id,
+                                                                  raise_if_not_found=False)
+            if amz_cleanup_old_attachments_cron_exist:
+                self.amz_auto_cleanup_old_attachments = amz_cleanup_old_attachments_cron_exist.active or False
+                self.amz_auto_cleanup_old_attachments_interval_number = \
+                    amz_cleanup_old_attachments_cron_exist.interval_number or False
+                self.amz_auto_cleanup_old_attachments_interval_type = \
+                    amz_cleanup_old_attachments_cron_exist.interval_type or False
+                self.amz_auto_cleanup_old_attachments_next_execution = \
+                    amz_cleanup_old_attachments_cron_exist.nextcall or False
+                self.amz_auto_cleanup_old_attachments_user_id = \
+                    amz_cleanup_old_attachments_cron_exist.user_id.id or False
 
     def update_invoices_to_amazon_cron_field(self, amz_seller):
         """
@@ -249,6 +280,7 @@ class GlobalCronConfiguration(models.TransientModel):
         self.setup_amz_vcs_tax_report_create_cron(amazon_seller)
         self.setup_amz_vcs_tax_report_process_cron(amazon_seller)
         self.setup_invoice_upload_to_amz_process_cron(amazon_seller)
+        self.setup_cleanup_old_attachments_process_cron(amazon_seller)
 
         vals['settlement_report_auto_create'] = self.amz_settlement_report_auto_create or False
         vals['auto_import_rating_report'] = self.amz_auto_import_rating_report or False
@@ -256,6 +288,7 @@ class GlobalCronConfiguration(models.TransientModel):
         vals['amz_auto_import_vcs_tax_report'] = self.amz_auto_import_vcs_tax_report or False
         vals['amz_auto_process_vcs_tax_report'] = self.amz_auto_process_vcs_tax_report or False
         vals['amz_auto_upload_tax_invoices'] = self.amz_auto_upload_tax_invoices or False
+        vals['amz_auto_cleanup_old_attachments'] = self.amz_auto_cleanup_old_attachments or False
         amazon_seller.write(vals)
 
     def create_amazon_fba_and_fbm_scheduler(self, cron_id, model_name):
@@ -264,6 +297,42 @@ class GlobalCronConfiguration(models.TransientModel):
         """
         self.env[IR_MODEL_DATA].create({'module': 'amazon_ept', 'name': model_name, 'model': IR_CRON,
                                         'res_id': cron_id, 'noupdate': True})
+        return True
+
+    def setup_cleanup_old_attachments_process_cron(self, seller):
+        """
+        This method will active the cron to cleanup old sttachments.
+        param amazon_seller : seller record.
+        """
+        if self.amz_auto_cleanup_old_attachments:
+            cron_exist = self.env.ref(AMAZON_CLEANUP_OLD_ATTACHMENTS % seller.id, raise_if_not_found=False)
+            vals = {'active': True,
+                    'interval_number': self.amz_auto_cleanup_old_attachments_interval_number,
+                    'interval_type': self.amz_auto_cleanup_old_attachments_interval_type,
+                    'nextcall': self.amz_auto_cleanup_old_attachments_next_execution,
+                    'user_id': self.amz_auto_cleanup_old_attachments_user_id.id,
+                    'code': "model.cron_cleanup_old_report_attachments(500, {'seller_id':%d})" % seller.id,
+                    'amazon_seller_cron_id': seller.id}
+
+            if cron_exist:
+                cron_exist.write(vals)
+            else:
+                cron_exist = self.env.ref('amazon_ept.ir_cron_cleanup_amazon_report_attachments',
+                                          raise_if_not_found=False)
+                if not cron_exist:
+                    raise UserError(_(
+                        'Core settings of Amazon auto upload invoices are deleted, please upgrade Amazon module to '
+                        'back this settings.'))
+
+                name = FBA_FBM + seller.name + ' : Cleanup Old Report Attachments'
+                vals.update({'name': name})
+                new_cron = cron_exist.copy(default=vals)
+                model_name = 'ir_cron_cleanup_amazon_report_attachments_seller_%d' % seller.id
+                self.create_amazon_fba_and_fbm_scheduler(new_cron.id, model_name)
+        else:
+            cron_exist = self.env.ref(AMAZON_CLEANUP_OLD_ATTACHMENTS % seller.id, raise_if_not_found=False)
+            if cron_exist:
+                cron_exist.write({'active': False})
         return True
 
     def setup_invoice_upload_to_amz_process_cron(self, seller):

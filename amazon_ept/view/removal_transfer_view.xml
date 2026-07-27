@@ -1,0 +1,134 @@
+<?xml version="1.0" ?>
+<odoo>
+    <record id="removal_transfer_tree_view" model="ir.ui.view">
+        <field name="name">removal.transfer.list.view</field>
+        <field name="model">stock.picking</field>
+        <field name="priority">100</field>
+        <field name="arch" type="xml">
+            <list create="0">
+                <field name="name"/>
+                <field name="origin"/>
+                <field name="partner_id"/>
+                <field name="location_dest_id"/>
+            </list>
+        </field>
+    </record>
+    <record id="removal_transfer_form_view" model="ir.ui.view">
+        <field name="name">removal.transfer.form.view</field>
+        <field name="model">amazon.removal.transfer.ept</field>
+        <field name="arch" type="xml">
+            <form string="Removal Transfer" version='7.0' create="0">
+                <sheet>
+                    <div class="oe_button_box" position="inside" name="button_box">
+                        <button name="list_of_transfer_removal_pickings" class="oe_stat_button" icon="fa-truck"
+                                type="object">
+                            <div class="o_field_widget o_stat_info">
+                                <span class="o_stat_value">
+                                    <field name="removal_count"/>
+                                    Pickings
+                                </span>
+                            </div>
+                        </button>
+                    </div>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" class="oe_inline" readonly="1"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="instance_id" widget="selection"
+                                   domain="[('is_allow_to_create_removal_order','=',True)]"/>
+                            <field name="warehouse_id" widget="selection"
+                                   groups="base.group_multi_company"
+                                   invisible="removal_disposition == 'Disposal'"
+                                   required="removal_disposition == 'Return'"
+                                   domain="[('is_fba_warehouse','=',False),('company_id','=',company_id)]"/>
+                            <field name="disposition_location_id"/>
+                            <field name="removal_order_picking_ids" invisible="1"/>
+                        </group>
+                        <group>
+                            <field name="ship_address_id" required="1"/>
+                            <field name="removal_disposition" required="1"/>
+                            <field name="company_id" widget="selection" groups="base.group_multi_company"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Removal Plan Items">
+                            <field name="removal_transfer_lines_ids" nolabel="1" colspan="4">
+                                <form string="Shipment plan Item">
+                                    <group>
+                                        <group>
+                                            <field name="amazon_product_id"/>
+                                            <field name="seller_sku"/>
+                                        </group>
+                                        <group>
+                                            <field name="sellable_quantity"/>
+                                            <field name="unsellable_quantity"/>
+                                        </group>
+                                    </group>
+                                </form>
+                                <list editable="bottom">
+                                    <field name="amazon_product_id" required="1"
+                                           domain="[('fulfillment_by','=','FBA'),('instance_id','=',parent.instance_id)]"
+                                           on_change="onchange_product_id(parent.removal_disposition)"/>
+                                    <field name="removal_disposition" invisible="1"/>
+                                    <field name="sellable_quantity" required="removal_disposition != 'Disposal'"
+                                           readonly="removal_disposition == 'Disposal'"/>
+                                    <field name="unsellable_quantity" required="1"/>
+                                    <field name="seller_sku"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+    <record model="ir.ui.view" id="view_form_picking_transfer_removal">
+        <field name="name">view.form.picking.transfer.removal</field>
+        <field name="model">stock.picking</field>
+        <field name="inherit_id" ref="stock.view_picking_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet/notebook/page[@name='extra']/group/group/field[@name='picking_type_code']"
+                   position="after">
+                <field name="removal_transfer_report_id" invisible="1"/>
+                <field name="carrier_name_in_file" readonly="1"
+                       string="Removal Transfer Carrier"
+                       nolabel="0"
+                       invisible="removal_transfer_report_id == False"
+                />
+            </xpath>
+        </field>
+    </record>
+    <record id="action_removal_transfer" model="ir.actions.act_window">
+        <field name="name">Removal Transfer</field>
+        <field name="res_model">amazon.removal.transfer.ept</field>
+        <field name="view_id" ref="removal_transfer_tree_view"/>
+    </record>
+
+    <record id="action_picking_tree_removal_transfer" model="ir.actions.act_window">
+        <field name="name">Removal Transfer</field>
+        <field name="res_model">stock.picking</field>
+        <field name="view_id" ref="removal_transfer_tree_view"/>
+        <field name="type">ir.actions.act_window</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('removal_picking_id','!=',False)]</field>
+        <!--<field name="search_view_id" ref="stock.view_picking_internal_search" />-->
+        <field name="help" type="html">
+            <p>
+                Removal Transfer prepared automatically by Removal Tracking Report.
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="amazon_removal_order_menu_core" name="Removal"
+              parent="amazon_ept.amazon_fba_menu_core" sequence="3"
+              groups="amazon_ept.group_amazon_fba_ept,amazon_ept.group_amazon_fba_and_fbm_ept"/>
+
+    <menuitem id="amazon_removal_trackin_transfer_menu" name="Removal Transfer"
+              parent="amazon_ept.amazon_removal_order_menu_core" sequence="1"
+              action="action_picking_tree_removal_transfer"
+              groups="amazon_ept.group_amazon_fba_ept,amazon_ept.group_amazon_fba_and_fbm_ept"/>
+</odoo>

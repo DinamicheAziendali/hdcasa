@@ -98,7 +98,8 @@
                         <div class="o_setting_right_pane">
                             <label for="amz_auto_check_cancel_order"/>
                             <div class="text-muted">
-                                Schedule automized canceled FBM Order in Amazon
+                                Configure a scheduled cron job to automatically cancel FBM orders in odoo that have
+                                already been canceled on Amazon.
                             </div>
                             <div>
                                 <field name="amz_cancel_order_interval_number"

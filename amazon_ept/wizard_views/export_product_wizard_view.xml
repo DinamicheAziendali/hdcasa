@@ -52,7 +52,7 @@
         </field>
     </record>
 
-     <record id="action_export_selective_products_ept" model="ir.actions.act_window">
+    <!--  <record id="action_export_selective_products_ept" model="ir.actions.act_window">
         <field name="name">Export/update Products In Amazon</field>
         <field name="res_model">amazon.product.wizard</field>
         <field name="view_mode">form</field>
@@ -61,7 +61,7 @@
         <field name="target">new</field>
         <field name="binding_model_id" ref="amazon_ept.model_amazon_product_ept" />
         <field name="binding_view_types">list</field>
-    </record>
+    </record> -->
 
      <record id="action_update_amazon_selective_stock_ept" model="ir.actions.act_window">
         <field name="name">Update Stock In Amazon</field>

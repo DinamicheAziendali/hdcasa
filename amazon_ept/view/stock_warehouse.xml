@@ -35,6 +35,11 @@
                     </list>
                 </field>
             </xpath>
+            <field name="partner_id" position="after">
+                <field name="is_awd_warehouse" groups="amazon_ept.group_amazon_user_ept" widget="boolean_toggle"/>
+                <field name="is_auto_confirm_awd_picking" groups="amazon_ept.group_amazon_user_ept"
+                       widget="boolean_toggle" invisible="not is_awd_warehouse"/>
+            </field>
         </field>
     </record>
 </odoo>

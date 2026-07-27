@@ -27,7 +27,7 @@ class AWDInboundShipmentEpt(models.Model):
                               ('IN_TRANSIT', 'IN_TRANSIT'), ('MIXED', 'MIXED'),
                               ('RECEIVING', 'RECEIVING'), ('UNCONFIRMED', 'UNCONFIRMED'),
                               ('WORKING', 'WORKING'), ('READY_TO_SHIP', 'READY_TO_SHIP'),
-                              ('SHIPPED', 'SHIPPED'), ('CLOSED', 'CLOSED')],
+                              ('SHIPPED', 'SHIPPED'), ('CLOSED', 'CLOSED'),('CREATED','CREATED')],
                              string='AWD Shipment Status', default='WORKING')
     name = fields.Char(size=120, readonly=True, required=False, index=True)
     shipment_id = fields.Char(string='Shipment ID')
@@ -48,7 +48,7 @@ class AWDInboundShipmentEpt(models.Model):
                                     help="DestinationFulfillmentCenterId provided by Amazon, "
                                          "when we send shipment Plan to Amazon")
     warehouse_reference_id = fields.Char(string='Warehouse Reference Id', readonly=True)
-    response_destination_address = fields.Text('Destination Address')
+    response_destination_address = fields.Text('Destination Address Text')
     response_origin_address = fields.Text('Origin Address')
     awd_shipment_line_ids = fields.One2many('awd.inbound.shipment.line.ept', 'awd_shipment_new_id',
                                             string='Shipment Lines')
@@ -171,6 +171,18 @@ class AWDInboundShipmentEpt(models.Model):
             if response.get('error', False):
                 raise UserError(_(response.get('error', {})))
             amazon_awd_shipments = response.get('result', {})
+            created_at_str = amazon_awd_shipments.get('createdAt', False)
+            config_date = instance.awd_shipment_import_after_date
+            if created_at_str and config_date:
+                created_at_date = datetime.strptime(created_at_str, '%Y-%m-%dT%H:%M:%S.%fZ').date()
+                if config_date > created_at_date:
+                    message = "Shipment %s is skipped because createdAt date (%s) is before the configured date (%s)." % (
+                        shipment_id, created_at_date, config_date)
+                    common_log_line_obj.create_common_log_line_ept(message=message,
+                                                                   model_name='awd.inbound.shipment.ept',
+                                                                   module='amazon_ept', operation_type='import',
+                                                                   amz_seller_ept=instance.seller_id.id)
+                    continue
             awd_inbound_shipment = self.create_amazon_awd_shipment(amazon_awd_shipments, instance, warehouse_id.id,
                                                                    ship_to_address, to_warehouse_id.id)
             if not awd_inbound_shipment:
@@ -591,9 +603,10 @@ class AWDInboundShipmentEpt(models.Model):
         :return: True
         """
         new_move._action_assign()
-        new_move._set_quantity_done(abs(received_qty))
-        new_move.picked = True
-        new_move._action_done()
+        if self.instance_id_ept.seller_id.allow_negative_stock or new_move.state == 'assigned':
+            new_move._set_quantity_done(abs(received_qty))
+            new_move.picked = True
+            new_move._action_done()
         return True
 
     def get_report_start_and_end_date(self, start_date, end_date):
@@ -660,9 +673,8 @@ class AWDInboundShipmentEpt(models.Model):
         seller_id = args.get('seller_id', False)
         if seller_id:
             seller = self.env['amazon.seller.ept'].search([('id', '=', seller_id)])
-            three_days_ago = Datetime.now() - timedelta(days=3)
-            rem_reports = self.search([('instance_id_ept', 'in', seller.instance_ids.ids),
-                                       ('create_date', '>=', three_days_ago),])
+            rem_reports = self.search([('instance_id_ept', 'in', seller.instance_ids.ids),('state', 'not in',
+                                                      ('CLOSED', 'CANCELLED', 'DELETED', 'ERROR', 'draft'))])
             for report in rem_reports:
                 report.check_status()
             self._cr.commit()

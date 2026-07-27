@@ -315,6 +315,41 @@
                                 </div>
                             </div>
                         </div>
+
+                        <div class="row mt16 o_settings_container">
+                    <div class="col-xs-12 col-md-6 o_setting_box">
+                        <div class="o_setting_left_pane">
+                            <field name="auto_create_removal_tracking_report" widget="boolean_toggle"
+                                   style="margin-left: -10px;"
+                                   class="oe_inline"/>
+                        </div>
+                        <div class="o_setting_right_pane">
+                            <label for="auto_create_removal_tracking_report"
+                                   string="Auto Request and Process Removal Tracking Report ?"/>
+                            <div class="text-muted">
+                                Schedule automized request and process removal Tracking report
+                            </div>
+                            <div>
+                                <field name="fba_removal_tracking_interval_number"
+                                       required="auto_create_removal_tracking_report and amazon_selling != 'FBM' and amz_seller_id"
+                                       invisible="not auto_create_removal_tracking_report"
+                                       class="oe_inline border border-primary rounded oe_left m-2"/>
+                                <field name="fba_removal_tracking_interval_type"
+                                       required="auto_create_removal_tracking_report and amazon_selling != 'FBM' and amz_seller_id"
+                                       invisible="not auto_create_removal_tracking_report"
+                                       class="oe_inline border border-primary rounded oe_left m-2"/>
+                                <field name="fba_removal_tracking_next_execution"
+                                       required="auto_create_removal_tracking_report and amazon_selling != 'FBM' and amz_seller_id"
+                                       invisible="not auto_create_removal_tracking_report"
+                                       class="oe_inline border border-primary rounded oe_left m-2"/>
+                                <field name="fba_removal_tracking_user"
+                                       required="auto_create_removal_tracking_report and amazon_selling != 'FBM' and amz_seller_id"
+                                       invisible="not auto_create_removal_tracking_report"
+                                       class="oe_inline border border-primary rounded oe_left m-2"/>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                     </div>
                 </div>
 

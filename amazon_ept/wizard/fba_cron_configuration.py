@@ -20,6 +20,7 @@ REMOVAL_ORDER_REPORT = 'amazon_ept.ir_cron_create_fba_removal_order_report_selle
 CUSTOMER_RETURN_REPORT = 'amazon_ept.ir_cron_auto_import_customer_return_report_seller_%d'
 STOCK_ADJUSTMENT_REPORT = 'amazon_ept.ir_cron_create_fba_stock_adjustment_report_seller_%d'
 IMPORT_AWD_SHIPMENT = 'amazon_ept.ir_cron_auto_import_awd_inbound_shipment_report_seller_%d'
+REMOVAL_TRACKING_REPORT = 'amazon_ept.ir_cron_create_fba_removal_tracking_report_seller_%d'
 
 
 class FbaCronConfiguration(models.TransientModel):
@@ -161,6 +162,21 @@ class FbaCronConfiguration(models.TransientModel):
     amz_awd_shipment_status_import_user_id = fields.Many2one(RES_USERS,
                                                              string="Auto Import FBA AWD Shipment User")
 
+    auto_create_removal_tracking_report = fields.Boolean(
+        string="Auto Request Removal Tracking Report ?")
+    fba_removal_tracking_next_execution = fields.Datetime(
+        'Auto Create Removal Tracking Report Next Execution', help='Removal Tracking Report Next Execution')
+    fba_removal_tracking_interval_number = fields.Integer(
+        'Auto Create Removal Tracking Report Interval Number', help="Removal Tracking Report Repeat Interval Number.")
+    fba_removal_tracking_interval_type = fields.Selection([('minutes', 'Minutes'),
+                                                           ('hours', 'Hours'),
+                                                           ('days', 'Days'),
+                                                           ('weeks', 'Weeks'),
+                                                           ('months', 'Months')],
+                                                          'Auto Create Removal Tracking Report Interval Unit')
+    fba_removal_tracking_user = fields.Many2one(
+        RES_USERS, string="Auto Create Removal Tracking Report User", help="Select the user.")
+
     @api.onchange("amz_seller_id")
     def onchange_amazon_seller_id(self):
         """
@@ -177,6 +193,7 @@ class FbaCronConfiguration(models.TransientModel):
         self.update_amz_new_inbound_shipment_status(amz_seller)
         self.update_amz_fba_repl_orders_auto_import_cron_field(amz_seller)
         self.update_amz_awd_shipment_import_cron_field(amz_seller)
+        self.update_amz_removal_tracking_report_cron_field(amz_seller)
 
     def update_amz_awd_shipment_import_cron_field(self, amz_seller):
         """
@@ -467,6 +484,7 @@ class FbaCronConfiguration(models.TransientModel):
         self.setup_inbound_shipment_status_cron(amazon_seller)
         self.setup_replacement_orders_report_create_cron(amazon_seller)
         self.setup_awd_inbound_shipment_status_cron(amazon_seller)
+        self.auto_fba_import_removal_tracking_report(amazon_seller)
 
         vals['auto_import_fba_pending_order'] = self.amz_auto_import_fba_pending_order or False
         vals['auto_import_shipment_report'] = self.amz_auto_import_shipment_report or False
@@ -477,6 +495,7 @@ class FbaCronConfiguration(models.TransientModel):
         vals['amz_auto_import_inbound_shipment_status'] = self.amz_auto_import_inbound_shipment_status or False
         vals['auto_create_fba_repl_orders_report'] = self.auto_create_fba_repl_orders_report or False
         vals['amz_auto_import_awd_shipment'] = self.amz_auto_import_awd_shipment or False
+        vals['auto_create_removal_tracking_report'] = self.auto_create_removal_tracking_report or False
         amazon_seller.write(vals)
 
     def create_amazon_fba_scheduler(self, cron_id, model_name):
@@ -1213,4 +1232,112 @@ class FbaCronConfiguration(models.TransientModel):
                 seller.id), raise_if_not_found=False)
             if cron_exist:
                 cron_exist.write({'active': False})
+        return True
+
+    def update_amz_removal_tracking_report_cron_field(self, amz_seller):
+        """
+        This method is used to update removal tracking report cron values based on configurations.
+        :param amz_seller : amazon.seller.ept()
+        """
+        if amz_seller:
+            amz_check_removal_tracking_report_cron_exist = self.env.ref(REMOVAL_TRACKING_REPORT % ( \
+                amz_seller.id), raise_if_not_found=False)
+            if amz_check_removal_tracking_report_cron_exist:
+                self.auto_create_removal_tracking_report = amz_check_removal_tracking_report_cron_exist.active or False
+                self.fba_removal_tracking_interval_number = \
+                    amz_check_removal_tracking_report_cron_exist.interval_number or False
+                self.fba_removal_tracking_interval_type = \
+                    amz_check_removal_tracking_report_cron_exist.interval_type or False
+                self.fba_removal_tracking_next_execution = \
+                    amz_check_removal_tracking_report_cron_exist.nextcall or False
+                self.fba_removal_tracking_user = \
+                    amz_check_removal_tracking_report_cron_exist.user_id.id or False
+
+    def auto_fba_import_removal_tracking_report(self, amazon_seller):
+        """
+        This method will activate the cron to Import Removal Tracking report.
+        :param amazon_seller:amazon.seller.ept()
+        :return: boolean(True/False)
+        """
+        if self.auto_create_removal_tracking_report and self.amazon_selling not in ['FBM']:
+            cron_exist = self.env.ref(REMOVAL_TRACKING_REPORT % (amazon_seller.id), raise_if_not_found=False)
+            vals = {
+                'active': True,
+                'interval_number': self.fba_removal_tracking_interval_number,
+                'interval_type': self.fba_removal_tracking_interval_type,
+                'nextcall': self.fba_removal_tracking_next_execution,
+                'code': "model.auto_import_removal_tracking_report({'seller_id':%d})" % (amazon_seller.id),
+                'user_id': self.fba_removal_tracking_user and self.fba_removal_tracking_user.id,
+                'amazon_seller_cron_id': amazon_seller.id
+            }
+
+            if cron_exist:
+                cron_exist.write(vals)
+            else:
+                inv_report_cron = self.env.ref( \
+                    'amazon_ept.ir_cron_create_fba_removal_tracking_report', raise_if_not_found=False)
+                if not inv_report_cron:
+                    raise UserError(
+                        _('Core settings of Amazon import removal Tracking are deleted, please upgrade Amazon module to '
+                          'back this settings.'))
+
+                name = 'FBA-' + amazon_seller.name + ' : Create Amazon Removal Tracking Report'
+                vals.update({'name': name})
+                new_cron = inv_report_cron.copy(default=vals)
+                model_name = 'ir_cron_create_fba_removal_tracking_report_seller_%d' % (amazon_seller.id)
+                self.create_amazon_removal_tracking_scheduler(new_cron.id, model_name)
+        else:
+            cron_exist = self.env.ref(REMOVAL_TRACKING_REPORT % (amazon_seller.id), raise_if_not_found=False)
+            if cron_exist:
+                cron_exist.write({'active': False})
+        self.setup_removal_tracking_report_process_cron(amazon_seller)
+        return True
+
+    def setup_removal_tracking_report_process_cron(self, seller):
+        """
+        This method will active the cron to process removal order report.
+        param amazon_seller : seller record.
+        """
+        if self.auto_create_removal_tracking_report and self.amazon_selling not in ['FBM']:
+            cron_exist = self.env.ref(
+                'amazon_ept.ir_cron_process_fba_removal_tracking_report_seller_%d' % (seller.id),
+                raise_if_not_found=False)
+            process_next_execution = self.fba_removal_tracking_next_execution + relativedelta(minutes=10)
+            vals = {
+                'active': True,
+                'interval_number': self.fba_removal_tracking_interval_number,
+                'interval_type': self.fba_removal_tracking_interval_type,
+                'nextcall': process_next_execution,
+                'code': "model.auto_process_removal_tracking_report({'seller_id':%d})" % seller.id,
+                'user_id': self.fba_removal_tracking_user and self.fba_removal_tracking_user.id,
+                'amazon_seller_cron_id': seller.id
+            }
+            if cron_exist:
+                cron_exist.write(vals)
+            else:
+                inv_report_cron = self.env.ref( \
+                    'amazon_ept.ir_cron_process_fba_removal_tracking_report', raise_if_not_found=False)
+                if not inv_report_cron:
+                    raise UserError(
+                        _('Core settings of Amazon process removal order are deleted, please upgrade Amazon module to '
+                          'back this settings.'))
+                name = 'FBA-' + seller.name + ' : Process Removal Tracking Report'
+                vals.update({'name': name})
+                new_cron = inv_report_cron.copy(default=vals)
+                model_name = 'ir_cron_process_fba_removal_tracking_report_seller_%d' % (seller.id)
+                self.create_amazon_removal_tracking_scheduler(new_cron.id, model_name)
+        else:
+            cron_exist = self.env.ref(
+                'amazon_ept.ir_cron_process_fba_removal_tracking_report_seller_%d' % (seller.id),
+                raise_if_not_found=False)
+            if cron_exist:
+                cron_exist.write({'active': False})
+        return True
+
+    def create_amazon_removal_tracking_scheduler(self, cron_id, model_name):
+        """
+        Will create seller wise amazon fba operations scheduler.
+        """
+        self.env['ir.model.data'].create({'module': 'amazon_ept', 'name': model_name, 'model': IR_CRON,
+                                          'res_id': cron_id, 'noupdate': True})
         return True

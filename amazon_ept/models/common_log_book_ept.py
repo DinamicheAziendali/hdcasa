@@ -11,6 +11,7 @@ import logging
 import ast
 from datetime import datetime, timedelta
 from io import BytesIO
+from dateutil.relativedelta import relativedelta
 from odoo import models, fields
 from odoo.tools.misc import xlsxwriter
 
@@ -40,6 +41,81 @@ class CommonLogBookEpt(models.Model):
         if self.active_product_attachment_id:
             self.active_product_attachment_id.unlink()
         return super(CommonLogBookEpt, self).unlink()
+
+    @staticmethod
+    def get_cleanup_rules():
+        states = ["processed", "CANCELLED", "_CANCELLED_"]
+        return [
+            {
+                "model": "amazon.fba.live.stock.report.ept",
+                "states": states,
+            },
+            {
+                "model": "active.product.listing.report.ept",
+                "states": states,
+            },
+            {
+                "model": "amazon.removal.order.report.history",
+                "states": states,
+            },
+            {
+                "model": "amazon.removal.tracking.report.history",
+                "states": states,
+            },
+            {
+                "model": "rating.report.history",
+                "states": states,
+            },
+            {
+                "model": "replacement.order.report.request.history",
+                "states": states,
+            },
+            {
+                "model": "sale.order.return.report",
+                "states": states,
+            },
+            {
+                "model": "settlement.report.ept",
+                "states": states + ["confirm"],
+            },
+            {
+                "model": "shipping.report.request.history",
+                "states": states,
+            },
+            {
+                "model": "amazon.stock.adjustment.report.history",
+                "states": states,
+            },
+            {
+                "model": "amazon.vcs.tax.report.ept",
+                "states": states,
+            },
+            {
+                "model": "fbm.sale.order.report.ept",
+                "states": states,
+            },
+        ]
+
+    def cron_cleanup_old_report_attachments(self, limit_per_model=500, args={}):
+        if args.get('seller_id', False):
+            seller_id = self.env['amazon.seller.ept'].browse(args.get('seller_id'))
+        else:
+            return False
+        cutoff_date = fields.Datetime.now() - relativedelta(day=seller_id.amz_auto_cleanup_old_attachments_after_days)
+        for rule in self.get_cleanup_rules():
+            records = self.env[rule["model"]].search([
+                ("attachment_id", "!=", False),
+                ("seller_id", "=", seller_id.id),
+                ("state", "in", rule["states"]),
+                ("create_date", "<", cutoff_date),
+            ], limit=limit_per_model)
+            attachments = records.mapped("attachment_id")
+            _logger.info(f"Deleting attachments for model: {rule['model']}, total attachments: {len(attachments)}")
+            if records:
+                records.write({"attachment_id": False})
+            if attachments:
+                attachments.unlink()
+        return True
 
     def _compute_is_active_product_list(self):
         """

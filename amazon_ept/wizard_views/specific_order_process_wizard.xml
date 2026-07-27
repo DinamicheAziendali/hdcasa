@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_specific_order_process_wizard_form" model="ir.ui.view">
+        <field name="name">view.specific.order.process.wizard.form</field>
+        <field name="model">specific.order.process.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Process Specific Orders">
+                <div class="alert alert-warning" role="alert">
+                    <h6>NOTE:</h6>
+                    <p>- Enter comma-separated Amazon Order IDs to process (e.g. 999-0000000-1234567,999-0000000-7654321).</p>
+                    <p>- Only orders that exist in the report file will be processed; all other IDs will be ignored.</p>
+                </div>
+                <group>
+                    <field name="order_ids" placeholder="999-0000000-1234567,999-0000000-7654321"/>
+                </group>
+                <footer>
+                    <button string="Process Orders" type="object" name="action_process_specific_orders"
+                            class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_specific_order_process_wizard" model="ir.actions.act_window">
+        <field name="name">Process Specific Orders</field>
+        <field name="res_model">specific.order.process.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="view_specific_order_process_wizard_form"/>
+        <field name="target">new</field>
+    </record>
+</odoo>

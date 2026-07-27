@@ -115,7 +115,8 @@ class AmazonMarketplaceConfig(models.TransientModel):
         is_european = self.seller_id.marketplace_ids.filtered(
             lambda x: x.market_place_id in ['A1PA6795UKMFR9', 'A1RKKUPIHCS9HS', 'A13V1IB3VIYZZH', 'A1F83G8C2ARO7P',
                                             'APJ6JRA9NG5V4', 'A1805IZSGTT6HS', 'A2NODRKZP88ZB9', 'A1C3SOZRARQ6R3',
-                                            'A33AVAJ2PDY3EV', 'AMEN7PMS3EDWL', 'A28R8C7NBKEWEA','AE08WJ6YKNBMC'])
+                                            'A33AVAJ2PDY3EV', 'AMEN7PMS3EDWL', 'A28R8C7NBKEWEA','AE08WJ6YKNBMC',
+                                            'A2VIGQ35RCS4UG', 'A17E79C6D8DWNP'])
         # 'A2VIGQ35RCS4UG',  'ARBP9OOSHTCHU','A21TJRUUN4KGV', 'A17E79C6D8DWNP', 'A33AVAJ2PDY3EV'
         if is_european:
             self.is_european_region = True
@@ -195,7 +196,9 @@ class AmazonMarketplaceConfig(models.TransientModel):
                                                  'A1C3SOZRARQ6R3',
                                                  'AMEN7PMS3EDWL',
                                                  'A28R8C7NBKEWEA',
-                                                 'AE08WJ6YKNBMC'])
+                                                 'AE08WJ6YKNBMC',
+                                                 'A2VIGQ35RCS4UG',
+                                                 'A17E79C6D8DWNP'])
             self.pan_eu_marketplace_ids = marketplace_ids.ids
             return {'domain': {'pan_eu_marketplace_ids': [('id', 'in', marketplace_ids.ids)]}}
         if self.amazon_program == 'cep':

@@ -48,9 +48,10 @@
                 </xpath>
                 <xpath expr="//button[@name='button_validate']" position="after">
                     <field name="feed_submission_id" invisible="1"/>
+                    <field name="amz_order_reference" invisible="1"/>
                     <button name="action_update_order_status"
                             type="object" string="Update Status"
-                            class="oe_highlight" invisible="feed_submission_id or amazon_shipment_id  or picking_type_code != 'outgoing' or state != 'done'"
+                            class="oe_highlight" invisible="feed_submission_id or amazon_shipment_id or picking_type_code != 'outgoing' or state != 'done' or not amz_order_reference"
                             groups="amazon_ept.group_amazon_user_ept"
                     />
                 </xpath>

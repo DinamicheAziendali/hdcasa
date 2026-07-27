@@ -145,6 +145,7 @@
                                    readonly="1"/>
                             <field name="is_european_region" invisible="1"/>
                             <field name="account_journal_payment_credit_account_id"/>
+                            <field name="allow_negative_stock" groups="base.group_no_one" widget="boolean_toggle"/>
                         </group>
                     </group>
                     <separator string="Amazon Warehouse"
@@ -199,6 +200,9 @@
                                     <field name="inventory_report_last_sync_on"
                                            groups="amazon_ept.group_amazon_fba_ept,amazon_ept.group_amazon_fba_and_fbm_ept"/>
                                     <field name="settlement_report_last_sync_on"/>
+                                    <field name="removal_tracking_report_last_sync_on" groups="amazon_ept.group_amazon_fba_ept,amazon_ept.group_amazon_fba_and_fbm_ept"/>
+					                <field name="removal_tracking_report_process_after_date" groups="amazon_ept.group_amazon_fba_ept,amazon_ept.group_amazon_fba_and_fbm_ept"/>
+					                <field name="amz_auto_cleanup_old_attachments_after_days" groups="amazon_ept.group_amazon_fba_ept,amazon_ept.group_amazon_fba_and_fbm_ept"/>
                                 </group>
                                 <group>
                                     <field name="fba_recommended_removal_report_last_sync_on"

@@ -83,7 +83,7 @@ class StockPicking(models.Model):
     updated_in_amazon = fields.Boolean("Updated In Amazon?", default=False, copy=False)
     is_fba_wh_picking = fields.Boolean("Is FBA Warehouse Picking", default=False)
     seller_id = fields.Many2one("amazon.seller.ept", "Seller")
-    removal_order_report_id = fields.Many2one('amazon.removal.order.report.history', string="Report")
+    removal_order_report_id = fields.Many2one('amazon.removal.order.report.history', string="Removal Order Report")
     ship_plan_id = fields.Many2one('inbound.shipment.plan.ept', readonly=True, default=False,
                                    copy=True, string="Shipment Plan")
     odoo_shipment_id = fields.Many2one('amazon.inbound.shipment.ept', string='Shipment', copy=True)
@@ -119,6 +119,8 @@ class StockPicking(models.Model):
                                                   compute="_compute_buyer_cancellation_request")
     buyer_cancellation_reason = fields.Char(help='Cancellation reason provided by the buyer',
                                             compute="_compute_buyer_cancellation_request")
+    amz_order_reference = fields.Char(related='sale_id.amz_order_reference',
+                                      string='Amazon Order Reference')
     new_odoo_shipment_id = fields.Many2one('inbound.shipment.new.ept', string='New Shipment', copy=True)
     new_ship_plan_id = fields.Many2one('inbound.shipment.plan.new.ept', readonly=True, default=False,
                                        copy=True, string="New Shipment Plan")
@@ -129,6 +131,11 @@ class StockPicking(models.Model):
         ('by_user', 'By User From Check Status'), ('by_scheduler', 'By Scheduler From Check Status'),
         ('by_user_forcefully', 'By User Forcefully')], string='Old Shipment Picking Done By', tracking=True)
     new_odoo_awd_shipment_id = fields.Many2one('awd.inbound.shipment.ept', string='New AWD Shipment', copy=True)
+    removal_picking_id = fields.Many2one("amazon.removal.transfer.ept", string="Removal Picking")
+    removal_transfer_report_id = fields.Many2one('amazon.removal.tracking.report.history',
+                                                 string="Removal Tracking Report")
+    amazon_removal_transfer_id = fields.Char()
+    carrier_name_in_file = fields.Char()
 
     @api.depends('sale_id.buyer_requested_cancellation')
     def _compute_buyer_cancellation_request(self):
@@ -430,9 +437,10 @@ class StockPicking(models.Model):
                             'move_dest_ids': [],
                         })
                         amz_return_move._action_assign()
-                        amz_return_move._set_quantity_done(abs(return_qty))
-                        amz_return_move.picked = True
-                        amz_return_move._action_done()
+                        if self.seller_id.allow_negative_stock or amz_return_move.state == 'assigned':
+                            amz_return_move._set_quantity_done(abs(return_qty))
+                            amz_return_move.picked = True
+                            amz_return_move._action_done()
                         received_qty = received_qty - return_qty
                         if received_qty <= 0.0:
                             break
@@ -515,9 +523,10 @@ class StockPicking(models.Model):
                             'move_dest_ids': [],
                         })
                         amz_return_move._action_assign()
-                        amz_return_move._set_quantity_done(abs(return_qty))
-                        amz_return_move.picked = True
-                        amz_return_move._action_done()
+                        if self.seller_id.allow_negative_stock or amz_return_move.state == 'assigned':
+                            amz_return_move._set_quantity_done(abs(return_qty))
+                            amz_return_move.picked = True
+                            amz_return_move._action_done()
                         received_qty = received_qty - return_qty
                         if received_qty <= 0.0:
                             break
@@ -697,8 +706,7 @@ class StockPicking(models.Model):
                 operations = move.move_line_ids.filtered(lambda o: o.quantity <= 0 or not o.picked)
                 for operation in operations:
                     op_qty = operation.quantity if operation.quantity <= qty_left else qty_left
-                    move._set_quantity_done(op_qty)
-                    move.picked = True
+                    operation.write({'quantity': op_qty, 'picked': True})
                     qty_left = float_round(qty_left - op_qty,
                                            precision_rounding=operation.product_uom_id.rounding,
                                            rounding_method='UP')
@@ -1048,9 +1056,10 @@ class StockPicking(models.Model):
                         lot_ids = move.lot_ids.ids
                         amz_return_move.write({'lot_ids': [(6, 0, lot_ids)]})
                     amz_return_move._action_assign()
-                    amz_return_move._set_quantity_done(abs(return_qty))
-                    amz_return_move.picked = True
-                    amz_return_move._action_done()
+                    if self.seller_id.allow_negative_stock or amz_return_move.state == 'assigned':
+                        amz_return_move._set_quantity_done(abs(return_qty))
+                        amz_return_move.picked = True
+                        amz_return_move._action_done()
 
                     received_qty = received_qty - return_qty
                     if received_qty <= 0.0:
@@ -1127,9 +1136,10 @@ class StockPicking(models.Model):
                         lot_ids = move.lot_ids.ids
                         amz_return_move.write({'lot_ids': [(6, 0, lot_ids)]})
                     amz_return_move._action_assign()
-                    amz_return_move._set_quantity_done(abs(return_qty))
-                    amz_return_move.picked = True
-                    amz_return_move._action_done()
+                    if self.seller_id.allow_negative_stock or amz_return_move.state == 'assigned':
+                        amz_return_move._set_quantity_done(abs(return_qty))
+                        amz_return_move.picked = True
+                        amz_return_move._action_done()
 
                     received_qty = received_qty - return_qty
                     if received_qty <= 0.0:
@@ -1397,9 +1407,10 @@ class StockPicking(models.Model):
                     amz_return_move = self.amz_copy_stock_move_data_ept(move, return_picking, return_qty,
                                                                         pickings, pick_type_id)
                     amz_return_move._action_assign()
-                    amz_return_move._set_quantity_done(abs(return_qty))
-                    amz_return_move.picked = True
-                    amz_return_move._action_done()
+                    if self.seller_id.allow_negative_stock or amz_return_move.state == 'assigned':
+                        amz_return_move._set_quantity_done(abs(return_qty))
+                        amz_return_move.picked = True
+                        amz_return_move._action_done()
                     received_qty = received_qty - return_qty
                     if received_qty <= 0.0:
                         break

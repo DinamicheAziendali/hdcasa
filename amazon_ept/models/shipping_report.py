@@ -408,6 +408,7 @@ class ShippingReportRequestHistory(models.Model):
         fulfillment_warehouse = {}
         skip_orders = []
         b2b_order_list = []
+        amz_order_ids = self.env.context.get('amz_order_ids', False)
         mismatch_lines = log_line_obj.amz_find_mismatch_details_log_lines(self.id, AMZ_SHIPPING_REPORT_REQUEST_HISTORY)
         mismatch_lines and mismatch_lines.unlink()
         if self.report_type == ReportType.GET_AMAZON_FULFILLED_SHIPMENTS_DATA_GENERAL.value:
@@ -420,7 +421,8 @@ class ShippingReportRequestHistory(models.Model):
                                                   self._context.get('is_auto_process', False)):
             return True
         for row in reader:
-            if row.get('amazon-order-id', False) in skip_orders:
+            if (row.get('amazon-order-id', False) in skip_orders or
+                    (amz_order_ids and row.get('amazon-order-id') not in amz_order_ids)):
                 continue
             instance = self.get_instance_shipment_report_ept(row, instances)
             is_exist, order_dict = self.check_amz_instance_and_shipment(row, instance, order_dict)
@@ -432,7 +434,8 @@ class ShippingReportRequestHistory(models.Model):
                                                                                   skip_orders)
                 if is_skip:
                     continue
-                row.update(fc_values)
+                if fc_values.get('fulfillment_center') and fc_values.get('warehouse'):
+                    row.update(fc_values)
             if row.get('merchant-order-id', False):
                 outbound_orders_dict = self.prepare_amazon_sale_order_line_values(row, outbound_orders_dict)
             else:
@@ -452,7 +455,8 @@ class ShippingReportRequestHistory(models.Model):
         """
         log_line_obj = self.env[COMMON_LOG_LINES_EPT]
         try:
-            move._action_done()
+            if self.seller_id.allow_negative_stock or move.state == 'assigned':
+                move._action_done()
         except Exception as exception:
             process_invoice = False
             is_mismatch_exist = False
@@ -994,9 +998,10 @@ class ShippingReportRequestHistory(models.Model):
                 new_move = move.create(new_move_vals)
 
             new_move._action_assign()
-            new_move._set_quantity_done(shipped_qty)
-            new_move.picked = True
-            new_move._action_done()
+            if self.seller_id.allow_negative_stock or new_move.state == 'assigned':
+                new_move._set_quantity_done(shipped_qty)
+                new_move.picked = True
+                new_move._action_done()
             new_move.write({'state': 'done', 'date': fields.Datetime.now()})
         else:
             if move.product_uom_qty != shipped_qty:
@@ -1004,9 +1009,10 @@ class ShippingReportRequestHistory(models.Model):
                 new_move = move.create(new_move_vals)
                 new_move._action_confirm(merge=False)
             vals_to_update.update({'state': 'done', 'date': fields.Datetime.now()})
-            move._set_quantity_done(shipped_qty)
-            move.picked = True
-            move._action_done()
+            if self.seller_id.allow_negative_stock or move.state == 'assigned':
+                move._set_quantity_done(shipped_qty)
+                move.picked = True
+                move._action_done()
             move.write(vals_to_update)
         return new_picking
 
@@ -1199,8 +1205,9 @@ class ShippingReportRequestHistory(models.Model):
         stock_move_obj = self.env[STOCK_MOVE]
         stock_move = stock_move_obj.create(stock_move_vals)
         stock_move._action_assign()
-        stock_move._set_quantity_done(stock_move.product_uom_qty)
-        stock_move.picked = True
+        if self.seller_id.allow_negative_stock or stock_move.state == 'assigned':
+            stock_move._set_quantity_done(stock_move.product_uom_qty)
+            stock_move.picked = True
         return True
 
     def amz_shipment_get_set_product_ept(self, product):
@@ -1849,7 +1856,7 @@ class ShippingReportRequestHistory(models.Model):
         waiting_moves = stock_move_obj.search([('amazon_instance_id', '!=', False),
                                                ('amazon_order_reference', '!=', False),
                                                ('amz_shipment_report_id', '!=', False),
-                                               ('state', 'not in', ('done', 'cancel'))], limit=50)
+                                               ('state', 'not in', ('done', 'cancel'))], limit=50, order='write_date asc')
         move_count = 1
         for move in waiting_moves:
             process_invoice = True

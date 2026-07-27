@@ -7,8 +7,8 @@ class SelectedPlacementOption(models.Model):
     _inherit = ['mail.thread', 'mail.activity.mixin']
     _order = 'id desc'
 
-    shipment_discount = fields.Float(string="Discount", help='Placement option discount.')
-    shipment_fees = fields.Float(string="Fees", help="Placement option fees.")
+    shipment_discount = fields.Float(string="Shipment Discount", help='Placement option discount.')
+    shipment_fees = fields.Float(string="Shipment Fees", help="Placement option fees.")
     shipment_ids = fields.Text(string="Shipment Ids", help="Placement option shipment ids")
     discount_currency_id = fields.Many2one('res.currency', string='Discount Currency')
     fees_currency_id = fields.Many2one('res.currency', string='Fees Currency')

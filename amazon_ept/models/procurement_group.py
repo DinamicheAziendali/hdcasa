@@ -15,6 +15,7 @@ class ProcurementGroup(models.Model):
     _inherit = 'procurement.group'
 
     removal_order_id = fields.Many2one('amazon.removal.order.ept', string='Removal Order')
-    odoo_shipment_id = fields.Many2one('amazon.inbound.shipment.ept', string='Shipment')
+    odoo_shipment_id = fields.Many2one('amazon.inbound.shipment.ept', string='Shipment(Deprecated)')
     new_odoo_shipment_id = fields.Many2one('inbound.shipment.new.ept', string='Shipment')
     new_odoo_awd_shipment_id = fields.Many2one('awd.inbound.shipment.ept', string='AWD Shipment')
+    removal_transfer_id = fields.Many2one('amazon.removal.transfer.ept', string='Removal Transfer')

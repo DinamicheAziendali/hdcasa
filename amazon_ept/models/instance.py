@@ -113,6 +113,8 @@ class AmazonInstanceEpt(models.Model):
                                                   default=_get_default_auto_workflow)
     fba_marketplace_workflow_id = fields.Many2one('sale.workflow.process.ept', string='AutoWorkflow(FBA)',
                                                   default=_get_default_fba_auto_workflow)
+    awd_shipment_import_after_date = fields.Date(
+        help="only imports those AWD shipment which have created after a given date.")
 
     def write(self, vals):
         """

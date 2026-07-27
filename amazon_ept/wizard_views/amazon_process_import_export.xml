@@ -260,6 +260,44 @@
                         </group>
                     </group>
                 </group>
+                <group groups="amazon_ept.group_amazon_fba_ept"
+                       invisible="fba_operations != 'amz_removal_tracking_report'"
+                       class="w-100">
+                    <label for="report_start_date" string="Date"/>
+                    <div class="d-inline-block">
+                        <field name="report_start_date" widget="daterange"
+                               options="{'related_end_date': 'report_end_date'}"
+                               class="oe_inline"/>
+                        To
+                        <field name="report_end_date" widget="daterange"
+                               options="{'related_start_date': 'report_start_date'}"
+                               class="oe_inline"/>
+                    </div>
+                </group>
+                <div style="margin-top:1rem" class="alert alert-warning" role="alert"
+                     invisible="fba_operations != 'amz_removal_tracking_report'">
+                    <p role="status" colspan="2">
+                        <b>
+                            <h3 style="font-weight:bold; color:#7D5A29">
+                                <u>Note :</u>
+                                <br/>
+                            </h3>
+                            <h5 style="color:#7D5A29; font-weight:bold"
+                                invisible="fba_operations != 'amz_removal_tracking_report'">
+                                <ol>
+                                    <li>This report contains all the removal Transfer, including the items in each
+                                        removal transfer, placed during any given time period.
+                                    </li>
+                                    <li>This can be used to help reconcile the total number of items requested
+                                        to be shipped from an Amazon fulfillment center with the actual number
+                                        of items shipped, along with the status of each item in the shipped.
+                                        order.
+                                    </li>
+                                </ol>
+                            </h5>
+                        </b>
+                    </p>
+                </div>
                 <div style="margin-top:1rem" class="alert alert-warning" role="alert"
                     invisible="both_operations not in ['amz_sync_active_products', 'amz_export_price_from_odoo_to_amazon', 'amz_list_settlement_report', 'amz_import_products'] and
                     operations not in ['amz_check_cancel_orders_fbm', 'amz_fbm_update_track_number_and_ship_status', 'amz_fbm_export_stock_from_odoo_to_amazon', 'amz_import_fbm_shipped_orders'] and

@@ -14,6 +14,9 @@ import time
 from io import BytesIO
 from io import StringIO
 import re
+import io
+from collections import defaultdict
+from decimal import Decimal, InvalidOperation
 from odoo import models, fields, api, _
 from odoo.addons.iap.tools import iap_tools
 from odoo.exceptions import UserError
@@ -319,6 +322,7 @@ class ActiveProductListingReportEpt(models.Model):
                                                                     ('model_id', '=', model_id)])
         if previous_log_lines:
             previous_log_lines.unlink()
+        self.last_sync_line = 0
         self.sync_products()
 
     @staticmethod
@@ -363,7 +367,10 @@ class ActiveProductListingReportEpt(models.Model):
          generated from the process.
         :return: boolean (TRUE/FALSE)
         """
+        message = ''
+        create_amz_product_list = []
         self.ensure_one()
+        product_obj = self.env['product.product']
         # check instance and attachment configured
         self.check_instance_and_attachment_configured()
         amazon_product_ept_obj = self.env['amazon.product.ept']
@@ -373,29 +380,92 @@ class ActiveProductListingReportEpt(models.Model):
         skip_header = self.read_import_file_header(headers)
         if skip_header:
             reader, headers = self.amz_read_active_listing_report(is_utf_code=True)
-            skip_header = self.read_import_file_header(headers)
+            skip_header, message = self.read_import_file_header(headers)
         if skip_header:
+            common_log_line_obj = self.env[COMMON_LOG_LINES_EPT]
+            common_log_line_obj.create_common_log_line_ept(
+                message=message, model_name=ACTIVE_PRODUCT_LISTING_REPORT_EPT, mismatch_details=True,
+                module='amazon_ept', operation_type='import', res_id=self.id,
+                amz_seller_ept=self.seller_id and self.seller_id.id or False,
+                amz_instance_ept=self.instance_id and self.instance_id.id or False)
             raise UserError(_("The Header of this report must be in English Language,"
                               " Please contact Emipro Support for further Assistance."))
-        for row in reader:
-            if reader.line_num <= self.last_sync_line:
+        required_columns = [
+            'fulfillment-channel',
+            'seller-sku',
+            'item-description',
+            'item-name',
+            'asin1',
+            'price'
+        ]
+        # Sanitize using separate method
+        clean_file = self._sanitize_amazon_csv(reader, required_columns)
+        # Create TEMP table
+        columns_sql = ", ".join([f'"{col}" TEXT' for col in required_columns])
+        self.env.cr.execute("DROP TABLE IF EXISTS temp_products")
+        self.env.cr.execute(f"""
+                CREATE TEMP TABLE temp_products (
+                    {columns_sql}
+                )
+            """)
+        # COPY into PostgreSQL
+        self.env.cr.copy_expert("""
+                COPY temp_products
+                FROM STDIN
+                WITH (
+                    FORMAT csv,
+                    HEADER true,
+                    DELIMITER E'\\t',
+                    QUOTE '"'
+                )
+            """, clean_file)
+        self.env.cr.execute("""
+            SELECT *
+            FROM temp_products
+        """)
+        records = self.env.cr.dictfetchall()
+        seller_skus = [r['seller-sku'] for r in records if r.get('seller-sku')]
+
+        odoo_products = product_obj.search([
+            '|',
+            ('default_code', 'in', seller_skus),
+            ('barcode', 'in', seller_skus)
+        ])
+        odoo_product_map = defaultdict(list)
+        for p in odoo_products:
+            if p.default_code:
+                odoo_product_map[p.default_code.strip()].append(p)
+            if p.barcode:
+                odoo_product_map[p.barcode.strip()].append(p)
+        amazon_product_obj = self.env['amazon.product.ept']
+        amazon_products = amazon_product_obj.search(['|', ('active', '=', False), ('active', '=', True),
+            ('seller_sku', 'in', seller_skus), ('instance_id', '=', self.instance_id.id)])
+        # Map SKU → list (duplicate safe)
+        amazon_product_map = defaultdict(list)
+        for p in amazon_products:
+            amazon_product_map[(p.seller_sku, p.fulfillment_by)].append(p)
+        start_line = self.last_sync_line or 0
+        line = 0
+        for index, row in enumerate(records):
+            if index < start_line:
                 continue
+            line = index + 1
             fulfillment_type = self.get_fulfillment_type(row)
             seller_sku = row.get('seller-sku', '').strip()
-            odoo_product = self.amz_find_odoo_product_ept(seller_sku)
-            amazon_product_id = amazon_product_ept_obj.search_amazon_product(
-                self.instance_id.id, seller_sku, fulfillment_by=fulfillment_type)
-            if not amazon_product_id and not odoo_product:
-                amazon_product = amazon_product_ept_obj.search(
-                    ['|', ('active', '=', False), ('active', '=', True), ('seller_sku', '=', seller_sku)],
-                    limit=1)
-                odoo_product = amazon_product.product_id
+            odoo_product = odoo_product_map.get(seller_sku, product_obj)
+            if len(odoo_product) == 1:
+                odoo_product = odoo_product[0]
+            amazon_product_id = amazon_product_map.get((seller_sku, fulfillment_type), amazon_product_obj)
+            if len(amazon_product_id) == 1:
+                amazon_product_id = amazon_product_id[0]
+            if amazon_product_id and not amazon_product_id.active:
+                odoo_product = amazon_product_id.product_id
             if amazon_product_id:
                 self.create_or_update_amazon_product_ept(amazon_product_id, amazon_product_id.product_id,
-                                                         fulfillment_type, row)
+                                                         fulfillment_type, row, create_amz_product_list)
                 self.amz_update_price_in_pricelist(row, amazon_product_id.product_id)
             else:
-                if len(odoo_product.ids) > 1:
+                if len(odoo_product) > 1:
                     seller_sku = row.get('seller-sku', '').strip()
                     message = ("Multiple Odoo products found with the same Internal Reference: %s.\n"
                                "Action Items:\n"
@@ -410,14 +480,67 @@ class ActiveProductListingReportEpt(models.Model):
                         mismatch_details=True, amz_seller_ept=self.seller_id and self.seller_id.id or False,
                         amz_instance_ept=self.instance_id and self.instance_id.id or False)
                     continue
-                self.create_odoo_or_amazon_product_ept(odoo_product, fulfillment_type, row)
+                self.create_odoo_or_amazon_product_ept(odoo_product, fulfillment_type, row, create_amz_product_list)
                 process_count += 1
-            if process_count >= 100:
+            if process_count >= 2000:
+                amazon_product_ept_obj.create(create_amz_product_list)
+                create_amz_product_list = []
                 process_count = 0
-                self.write({'last_sync_line': reader.line_num})
+                self.write({'last_sync_line': line})
                 self._cr.commit()
-        self.write({'state': 'processed'})
+        if create_amz_product_list:
+            amazon_product_ept_obj.create(create_amz_product_list)
+        self.write({'last_sync_line': line})
+        model_id = self.env[IR_MODEL]._get(ACTIVE_PRODUCT_LISTING_REPORT_EPT).id
+        mismatched_logs = self.env[COMMON_LOG_LINES_EPT].search([('res_id', '=', self.id),
+                                                                 ('model_id', '=', model_id),
+                                                                 ('mismatch_details', '=', True)])
+        if len(records) == self.last_sync_line:
+            if mismatched_logs:
+                self.write({'state': 'partially_processed'})
+            else:
+                self.write({'state': 'processed'})
         return True
+
+    def _sanitize_amazon_csv(self, reader, required_columns):
+        """
+        Sanitize Amazon TAB-delimited file.
+        - Keeps ONLY required columns
+        - Fixes scientific notation (e.g. 8.69418E+11 → 869418000000)
+        - Makes it PostgreSQL COPY safe
+        """
+        # input_buf = io.StringIO(raw_csv_text, newline='')
+        output_buf = io.StringIO(newline='')
+        # reader = csv.DictReader(
+        #     input_buf,
+        #     delimiter='\t',
+        #     quotechar='"',
+        #     doublequote=True,
+        #     strict=False
+        # )
+        writer = csv.DictWriter(
+            output_buf,
+            fieldnames=required_columns,
+            delimiter='\t',
+            quotechar='"',
+            quoting=csv.QUOTE_ALL,
+            lineterminator='\n'
+        )
+        writer.writeheader()
+        for row in reader:
+            filtered = {}
+            for col in required_columns:
+                value = row.get(col) or ''
+                if col in ['seller-sku', 'asin1'] and value:
+                    if 'e+' in value.lower():
+                        try:
+                            value = str(Decimal(value).quantize(Decimal('1')))
+                        except (InvalidOperation, ValueError):
+                            pass  # keep original if conversion fails
+                filtered[col] = value
+            writer.writerow(filtered)
+        output_buf.seek(0)
+        return output_buf
 
     def amz_find_odoo_product_ept(self, seller_sku):
         """
@@ -461,37 +584,39 @@ class ActiveProductListingReportEpt(models.Model):
         @param : headers - list of import file headers
         :return: This Method return boolean(True/False).
         """
-        common_log_line_obj = self.env[COMMON_LOG_LINES_EPT]
+        # common_log_line_obj = self.env[COMMON_LOG_LINES_EPT]
         skip_header = False
-        if self.auto_create_product and 'item-name' not in headers:
+        message = ''
+        if 'item-name' not in headers:
             message = 'Import file is skipped due to header item-name is incorrect or blank'
-            common_log_line_obj.create_common_log_line_ept(
-                message=message, model_name=ACTIVE_PRODUCT_LISTING_REPORT_EPT, mismatch_details=True,
-                module='amazon_ept', operation_type='import', res_id=self.id,
-                amz_seller_ept=self.seller_id and self.seller_id.id or False,
-                amz_instance_ept=self.instance_id and self.instance_id.id or False)
+            # common_log_line_obj.create_common_log_line_ept(
+            #     message=message, model_name=ACTIVE_PRODUCT_LISTING_REPORT_EPT, mismatch_details=True,
+            #     module='amazon_ept', operation_type='import', res_id=self.id,
+            #     amz_seller_ept=self.seller_id and self.seller_id.id or False,
+            #     amz_instance_ept=self.instance_id and self.instance_id.id or False)
             skip_header = True
 
         elif 'seller-sku' not in headers:
             message = 'Import file is skipped due to header seller-sku is incorrect or blank'
-            common_log_line_obj.create_common_log_line_ept(
-                message=message, model_name=ACTIVE_PRODUCT_LISTING_REPORT_EPT, mismatch_details=True,
-                module='amazon_ept', operation_type='import', res_id=self.id,
-                amz_seller_ept=self.seller_id and self.seller_id.id or False,
-                amz_instance_ept=self.instance_id and self.instance_id.id or False)
+            # common_log_line_obj.create_common_log_line_ept(
+            #     message=message, model_name=ACTIVE_PRODUCT_LISTING_REPORT_EPT, mismatch_details=True,
+            #     module='amazon_ept', operation_type='import', res_id=self.id,
+            #     amz_seller_ept=self.seller_id and self.seller_id.id or False,
+            #     amz_instance_ept=self.instance_id and self.instance_id.id or False)
             skip_header = True
 
         elif 'fulfilment-channel' not in headers and 'fulfillment-channel' not in headers:
             message = 'Import file is skipped due to header fulfilment-channel is incorrect or blank'
-            common_log_line_obj.create_common_log_line_ept(
-                message=message, model_name=ACTIVE_PRODUCT_LISTING_REPORT_EPT, mismatch_details=True,
-                module='amazon_ept', operation_type='import', res_id=self.id,
-                amz_seller_ept=self.seller_id and self.seller_id.id or False,
-                amz_instance_ept=self.instance_id and self.instance_id.id or False)
+            # common_log_line_obj.create_common_log_line_ept(
+            #     message=message, model_name=ACTIVE_PRODUCT_LISTING_REPORT_EPT, mismatch_details=True,
+            #     module='amazon_ept', operation_type='import', res_id=self.id,
+            #     amz_seller_ept=self.seller_id and self.seller_id.id or False,
+            #     amz_instance_ept=self.instance_id and self.instance_id.id or False)
             skip_header = True
-        return skip_header
+        return skip_header, message
 
-    def create_or_update_amazon_product_ept(self, amazon_product_id, odoo_product, fulfillment_type, row):
+    def create_or_update_amazon_product_ept(self, amazon_product_id, odoo_product, fulfillment_type, row,
+                                            create_amz_product_list):
         """
         This method will create tha amazon product if it is not exist and if amazon
         product exist that it will update that
@@ -500,14 +625,12 @@ class ActiveProductListingReportEpt(models.Model):
         param fulfillment_type : selling on
         param row : report data
         """
-
-        amazon_product_ept_obj = self.env['amazon.product.ept']
         description = row.get('item-description', '') and row.get('item-description', '')
         name = row.get('item-name', '') and row.get('item-name', '')
         seller_sku = row.get('seller-sku', '').strip()
 
         if not amazon_product_id:
-            amazon_product_ept_obj.create({
+            val = {
                 'product_id': odoo_product.id,
                 'instance_id': self.instance_id.id,
                 'name': name,
@@ -516,7 +639,8 @@ class ActiveProductListingReportEpt(models.Model):
                 'seller_sku': seller_sku,
                 'fulfillment_by': fulfillment_type,
                 'exported_to_amazon': True
-            })
+            }
+            create_amz_product_list.append(val)
         else:
             amazon_product_id.write({
                 'name': name,
@@ -527,7 +651,7 @@ class ActiveProductListingReportEpt(models.Model):
                 'exported_to_amazon': True,
             })
 
-    def create_odoo_or_amazon_product_ept(self, odoo_product, fulfillment_type, row):
+    def create_odoo_or_amazon_product_ept(self, odoo_product, fulfillment_type, row, create_amz_product_list):
         """
         This method is used to create odoo or amazon product.
         :param odoo_product: product.product() object
@@ -540,7 +664,8 @@ class ActiveProductListingReportEpt(models.Model):
         created_product = False
         seller_sku = row.get('seller-sku', '').strip()
         if odoo_product:
-            self.create_or_update_amazon_product_ept(False, odoo_product, fulfillment_type, row)
+            self.create_or_update_amazon_product_ept(False, odoo_product, fulfillment_type, row,
+                                                     create_amz_product_list)
             self.amz_update_price_in_pricelist(row, odoo_product)
         else:
             if self.auto_create_product:
@@ -559,7 +684,8 @@ class ActiveProductListingReportEpt(models.Model):
                                                           'name': row.get('item-name', ''),
                                                           'type': 'consu',
                                                           'is_storable': True})
-                    self.create_or_update_amazon_product_ept(False, created_product, fulfillment_type, row)
+                    self.create_or_update_amazon_product_ept(False, created_product, fulfillment_type,
+                                                             row, create_amz_product_list)
                     message = """ System has created new product with seller sku %s with Amazon instance: %s. """ % (seller_sku,
                                                                                          self.instance_id.name)
                     is_mismatch = False

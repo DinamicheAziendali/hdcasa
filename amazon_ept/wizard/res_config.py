@@ -196,6 +196,8 @@ class AmazonConfigSettings(models.TransientModel):
     amz_outbound_activity_type_id = fields.Many2one('mail.activity.type', string="Activity Type (Outbound)")
     amz_outbound_activity_date_deadline = fields.Integer(string='Deadline lead days (Outbound)',
                                                          help="its add number of days in schedule activity deadline date ")
+    awd_shipment_import_after_date = fields.Date(
+        help="only imports those AWD shipment which have created after a given date.")
 
     def set_values(self):
         """
@@ -451,6 +453,7 @@ class AmazonConfigSettings(models.TransientModel):
                 instance.analytic_account_id else False
             values['is_inbound_box_information_known'] = instance.is_inbound_box_information_known if (
                 instance.is_inbound_box_information_known) else False
+            values['awd_shipment_import_after_date'] = instance.awd_shipment_import_after_date if instance.awd_shipment_import_after_date else False
         else:
             values = {'amz_instance_id': False, 'amz_instance_stock_field': False, 'amz_country_id': False,
                       'amz_lang_id': False, 'amz_warehouse_id': False,
@@ -500,6 +503,7 @@ class AmazonConfigSettings(models.TransientModel):
             values['is_use_percent_tax'] = True if self.amz_tax_id else False
             values['analytic_account_id'] = self.analytic_account_id.id if self.analytic_account_id else False
             values['is_inbound_box_information_known'] = self.is_inbound_box_information_known if self.is_inbound_box_information_known else False
+            values['awd_shipment_import_after_date'] = self.awd_shipment_import_after_date if self.awd_shipment_import_after_date else False
             instance.write(values)
         if self.amz_seller_id:
             if not self.allow_auto_create_outbound_orders:

@@ -21,6 +21,8 @@ class StockWarehouse(models.Model):
     is_fba_warehouse = fields.Boolean("Is FBA Warehouse ?")
     unsellable_location_id = fields.Many2one('stock.location', string="Unsellable Location",
                                              help="Amazon unsellable location")
+    is_awd_warehouse = fields.Boolean("Is AWD Warehouse?")
+    is_auto_confirm_awd_picking = fields.Boolean("Is Auto Confirm AWD Picking?")
 
     @api.onchange("partner_id")
     def _onchange_partner_id(self):

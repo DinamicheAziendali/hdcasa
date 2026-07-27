@@ -1992,9 +1992,10 @@ class InboundShipmentEpt(models.Model):
         :return: True
         """
         new_move._action_assign()
-        new_move._set_quantity_done(abs(received_qty))
-        new_move.picked = True
-        new_move._action_done()
+        if self.instance_id_ept.seller_id.allow_negative_stock or new_move.state == 'assigned':
+            new_move._set_quantity_done(abs(received_qty))
+            new_move.picked = True
+            new_move._action_done()
         return True
 
     def update_non_partnered_carrier(self):

@@ -695,8 +695,8 @@ class SettlementReportEpt(models.Model):
         ending_balance_line = statement_line_obj.search([('is_ending_balance_entry', '=', True),
                                                          ('settlement_report_id', '=', self.id)])
         if ending_balance_line and not ending_balance_line.is_reconciled and self.instance_id.ending_balance_account_id:
-            if ending_balance_line.move_id and ending_balance_line.move_id.state == 'posted':
-                ending_balance_line.move_id.button_draft()
+            # if ending_balance_line.move_id and ending_balance_line.move_id.state == 'posted':
+            #     ending_balance_line.move_id.button_draft()
             self.amz_reconcile_ending_or_fees_bank_statement_line(ending_balance_line.id,
                                                                   self.instance_id.ending_balance_account_id)
         elif ending_balance_line and not ending_balance_line.is_reconciled \
@@ -796,8 +796,8 @@ class SettlementReportEpt(models.Model):
                     self.amz_message_post_for_unreconciled_stmt_line(error_message, line)
                     continue
                 tax_id = trans_line[0].tax_id if trans_line else tax_obj
-                if line.move_id and line.move_id.state == 'posted':
-                    line.move_id.button_draft()
+                # if line.move_id and line.move_id.state == 'posted':
+                #     line.move_id.button_draft()
                 self.amz_reconcile_ending_or_fees_bank_statement_line(line_id, account_id, tax_id,
                                                                       analytic_account_id)
             self._cr.commit()
@@ -1818,6 +1818,7 @@ class SettlementReportEpt(models.Model):
         :param: unit_price: float
         :return: refund qty - int, unit price - float
         """
+        bom_lines = False
         line_refund_qty = 1
         is_undefined_returns = True
         product = self.env['product.product'].browse(product_id)
@@ -1827,9 +1828,26 @@ class SettlementReportEpt(models.Model):
                 lambda l: l.move_type == 'out_refund' and l.state != 'cancel' and l.id not in invoice_lines.move_id.ids)
             ref_lines = ref_invoices.invoice_line_ids.filtered(lambda l: l.product_id.id == product_id)
             prd_refund_qty = sum(ref_lines.mapped('quantity')) if ref_lines else 0
-            prd_return_moves = order.order_line.move_ids.filtered(
-                lambda l: l.product_id.id == product_id and l.location_dest_id.usage != 'customer' and l.origin_returned_move_id and l.state == 'done')
-            prd_return_qty = sum(prd_return_moves.mapped('product_uom_qty')) if prd_return_moves else 0
+            module_obj = self.env['ir.module.module']
+            mrp_module = module_obj.sudo().search([('name', '=', 'mrp'), ('state', '=', 'installed')])
+            if mrp_module:
+                product = self.env['product.product'].browse(product_id)
+                bom_lines = self.env['shipping.report.request.history'].amz_shipment_get_set_product_ept(product)
+            if bom_lines:
+                # Use first component to calculate kit return qty
+                first_bom_line = bom_lines[0][0]
+                component_return_moves = order.order_line.move_ids.filtered(
+                    lambda l: l.product_id.id == first_bom_line.product_id.id
+                              and l.location_dest_id.usage != 'customer'
+                              and l.origin_returned_move_id
+                              and l.state == 'done'
+                )
+                component_returned_qty = sum(component_return_moves.mapped('product_uom_qty'))
+                prd_return_qty = component_returned_qty / first_bom_line.product_qty if first_bom_line.product_qty else 0
+            else:
+                prd_return_moves = order.order_line.move_ids.filtered(
+                    lambda l: l.product_id.id == product_id and l.location_dest_id.usage != 'customer' and l.origin_returned_move_id and l.state == 'done')
+                prd_return_qty = sum(prd_return_moves.mapped('product_uom_qty')) if prd_return_moves else 0
             if prd_return_qty - prd_refund_qty > 0:
                 line_refund_qty = prd_return_qty - prd_refund_qty
                 # re-calculate the unit price based on the refund qty

@@ -641,7 +641,7 @@ class AmazonRemovalOrderReportHistory(models.Model):
         remaining_pickings = picking_vals.get('remaining_pickings').ids if \
             picking_vals.get('remaining_pickings') else []
         processed_pickings = picking_vals.get('processed_pickings').ids if \
-            picking_vals.get('remaining_pickings') else []
+            picking_vals.get('processed_pickings') else []
         remaining_processed_pickings = list(set(remaining_pickings + processed_pickings))
         stock_move_obj = self.env['stock.move']
         order_ref = row.get('order-id', '')

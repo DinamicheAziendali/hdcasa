@@ -330,7 +330,7 @@
     <!--This Cron will be used for remove 30 days Old Customer PII Information also this cron is read only-->
     <record id="auto_delete_amazon_customer_details" model="ir.cron">
         <field name="name">Amazon:Auto Delete Customer PII Details(Do Not Delete)</field>
-        <field name="active" eval="True"/>
+        <field name="active" eval="False"/>
         <field name="model_id" ref="model_res_partner"/>
         <field name="state">code</field>
         <field name="code">model.auto_delete_customer_pii_details()</field>
@@ -428,5 +428,38 @@
         <field ref="model_awd_inbound_shipment_ept" name="model_id"/>
         <field name="state">code</field>
         <field name="code">model.auto_process_awd_shipment_report()</field>
+    </record>
+
+    <record id="ir_cron_create_fba_removal_tracking_report" model="ir.cron">
+        <field name="name">FBA Removal Tracking Report(Do Not Delete)</field>
+        <field name="active" eval="False"/>
+        <field name="user_id" ref="base.user_root"/>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="state">code</field>
+        <field name="model_id" ref="model_amazon_removal_tracking_report_history"/>
+        <field name="code">model.auto_import_removal_tracking_report()</field>
+    </record>
+
+    <record id="ir_cron_process_fba_removal_tracking_report" model="ir.cron">
+        <field name="name">FBA Removal Tracking Report Process(Do Not Delete)</field>
+        <field name="active" eval="False"/>
+        <field name="user_id" ref="base.user_root"/>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="state">code</field>
+        <field name="model_id" ref="model_amazon_removal_tracking_report_history"/>
+        <field name="code">model.auto_process_removal_tracking_report()</field>
+    </record>
+
+    <record id="ir_cron_cleanup_amazon_report_attachments" model="ir.cron">
+        <field name="name">Amazon: Cleanup Old Report Attachments(Do Not Delete)</field>
+        <field name="active" eval="False"/>
+        <field name="user_id" ref="base.user_root"/>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="model_id" ref="common_connector_library.model_common_log_book_ept"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_cleanup_old_report_attachments(limit_per_model=500)</field>
     </record>
 </odoo>

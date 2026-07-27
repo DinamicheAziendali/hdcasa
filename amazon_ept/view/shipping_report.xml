@@ -82,6 +82,9 @@
                             invisible="not is_fulfillment_center"
                             type="object"
                             class="oe_highlight"/>
+                    <button name="%(action_specific_order_process_wizard)d" string="Process Specific Orders"
+                            invisible="not attachment_id or state not in ('processed', 'partially_processed')"
+                            type="action" help="Click Here To process the specific orders"/>
                     <field name="state" widget="statusbar" statusbar_visible="SUBMITTED,IN_PROGRESS,DONE"/>
                 </header>
                 <sheet>

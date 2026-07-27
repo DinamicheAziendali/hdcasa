@@ -173,9 +173,11 @@ class InboundShipmentNewEpt(models.Model):
                                               ('picking_type_id.warehouse_id', '=', warehouse.id)])
                 if picking:
                     picking.write({'is_fba_wh_picking': True})
-
+        awd_out_pickings = self.auto_validate_awd_out_picking()
         pickings = self.mapped('picking_ids').filtered(lambda pick: not pick.is_fba_wh_picking and
                                                        pick.state not in ['done', 'cancel'])
+        if awd_out_pickings and pickings:
+            pickings = pickings - awd_out_pickings
         for picking in pickings:
             picking.action_assign()
         return True
@@ -290,6 +292,10 @@ class InboundShipmentNewEpt(models.Model):
         """
         instance_shipment_ids = defaultdict(list)
         for shipment in self:
+            pickings = shipment.picking_ids.filtered(lambda x:x.picking_type_id.code == 'outgoing')
+            for picking in pickings:
+                if picking.state != 'done':
+                    raise UserError(_("Shipment Status is not update due to outgoing picking not in done state for shipment %s") % (shipment.name))
             if not shipment.shipment_confirmation_id:
                 continue
             instance = shipment.get_instance()
@@ -483,9 +489,10 @@ class InboundShipmentNewEpt(models.Model):
         :return: True
         """
         new_move._action_assign()
-        new_move._set_quantity_done(abs(received_qty))
-        new_move.picked = True
-        new_move._action_done()
+        if self.instance_id_ept.seller_id.allow_negative_stock or new_move.state == 'assigned':
+            new_move._set_quantity_done(abs(received_qty))
+            new_move.picked = True
+            new_move._action_done()
         return True
 
     def get_instance(self):
@@ -720,3 +727,38 @@ class InboundShipmentNewEpt(models.Model):
                 inbound_ship_report_data_ept_obj.create_shipment_report_data(inbound_ship_report_data,
                                                                                  instance.seller_id.id, 'new')
         return True
+
+    def auto_validate_awd_out_picking(self):
+        """
+        Define this method for auto validate AWD out pickings which fully available in the odoo in the
+        respective location.
+        :return: stock.picking()
+        """
+        awd_out_pickings = self.mapped('picking_ids').filtered(
+            lambda pick: not pick.is_fba_wh_picking and pick.state not in [
+                'done',
+                'cancel'] and pick.picking_type_id.warehouse_id and pick.picking_type_id.warehouse_id.is_awd_warehouse
+                         and pick.picking_type_id.warehouse_id.is_auto_confirm_awd_picking)
+        for pick in awd_out_pickings:
+            if self.check_awd_out_picking_fully_available(pick):
+                pick.action_assign()
+                pick.with_context(skip_sms=True).button_validate()
+            else:
+                pick.message_post(body=_("The AWD picking was not validated automatically because the "
+                                         "required quantity was not fully available in stock."))
+        return awd_out_pickings
+
+    @staticmethod
+    def check_awd_out_picking_fully_available(pick):
+        """
+        Define this method for check that out picking is fully available.
+        :param: pick: stock.picking()
+        :return: True/False
+        """
+        is_valid_warehouse = True
+        location_id = pick.location_id.id
+        for move in pick.move_ids:
+            available_qty = move.product_id.with_context(location=location_id).free_qty
+            if available_qty < move.product_uom_qty:
+                is_valid_warehouse = False
+        return is_valid_warehouse

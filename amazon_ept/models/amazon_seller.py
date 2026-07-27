@@ -340,6 +340,13 @@ class AmazonSellerEpt(models.Model):
     awd_warehouse_id = fields.Many2one('stock.warehouse', string="AWD Warehouse")
     is_marketplace_auto_workflow = fields.Boolean("Market Place WorkFlow", default=False,
                                                   help="If checked, Then All the Workflow will applied according to Marketplace WorkFlow")
+    auto_create_removal_tracking_report = fields.Boolean(string='Auto Import Removal Tracking Report?')
+    removal_tracking_report_last_sync_on = fields.Datetime(string='Last Removal Tracking Report Request Date')
+    removal_tracking_report_process_after_date = fields.Date(string='Removal Tracking Report Process After Date',
+                                                             help="Process only those Removal Reports Data which are created after the specified date.")
+    allow_negative_stock = fields.Boolean(string='Allow Negative Stock', default= True, tracking=True)
+    amz_auto_cleanup_old_attachments = fields.Boolean(string='Auto Cleanup Old Attachments?')
+    amz_auto_cleanup_old_attachments_after_days = fields.Integer(string='Auto Cleanup Old Attachments After Days', default=90)
 
     def write(self, vals):
         """

@@ -178,6 +178,13 @@
         <field name="domain_force">[('company_id', 'in', company_ids)]</field>
     </record>
 
+    <record model="ir.rule" id="amazon_removal_order_tracking_report_ept_multi_company">
+        <field name="name">Amazon Removal tracking EPT Report multi-company</field>
+        <field name="model_id" ref="model_amazon_removal_tracking_report_history"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+
     <!--Rule for Hide PII Data Scheduler -->
     <record model="ir.rule" id="amz_ept_no_edit_delete_cron">
         <field name="name">Amazon: No Edit or Delete Amazon Cron</field>

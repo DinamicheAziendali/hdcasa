@@ -9,10 +9,11 @@ to process for different amazon operations.
 import base64
 import csv
 import xlrd
+import openpyxl
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta
-from io import StringIO
+from io import StringIO, BytesIO
 import os
 import logging
 from odoo import models, fields, api, _
@@ -103,6 +104,7 @@ class AmazonProcessImportExport(models.TransientModel):
         ('amz_shipment_report', 'Import FBA Shipped Orders'),
         ('amz_stock_adjustment_report', 'Import FBA Stock Adjustment'),
         ('amz_removal_order_report', 'Import FBA Removal Orders'),
+        ('amz_removal_tracking_report', 'Import FBA Removal Tracking Reports'),
         ('amz_customer_return_report', 'Import FBA Customer Returns'),
         ('amz_removal_order_request', 'Create Removal Order Plan'),
         ('amz_import_inbound_shipment', 'Import Inbound Shipment'),
@@ -312,6 +314,11 @@ class AmazonProcessImportExport(models.TransientModel):
             self.report_end_date = datetime.now()
             self.check_running_schedulers('ir_cron_create_fba_replacement_orders_report_seller_')
 
+        if self.fba_operations == "amz_removal_tracking_report":
+            self.report_start_date = datetime.now() - timedelta(
+                self.seller_id.removal_order_report_days)
+            self.report_end_date = datetime.now()
+
     @api.onchange('both_operations')
     def onchange_both_operations(self):
         """
@@ -486,7 +493,10 @@ class AmazonProcessImportExport(models.TransientModel):
         sale_order_obj = self.env[SALE_ORDER]
         self.with_context({'raise_warning': True}).check_running_schedulers(
             'ir_cron_auto_update_order_status_seller_')
-        return sale_order_obj.amz_update_tracking_number(self.seller_id)
+        order = self.env.context.get('order') if self.env.context.get('order') else False 
+        seller = order.amz_seller_id if order else self.seller_id
+        return sale_order_obj.amz_update_tracking_number(seller)
+
 
     def amz_import_fbm_shipped_orders(self):
         """
@@ -1346,29 +1356,43 @@ class AmazonProcessImportExport(models.TransientModel):
                 self._cr.commit()
         return map_product_count
 
+    def _amz_iter_xls_sheets_ept(self, file_data, ext):
+        """
+        Yield each sheet as a list of row tuples (plain values) for .xls and .xlsx.
+        Isolates the library-specific reading so the caller works with uniform data.
+        """
+        if ext == '.xlsx':
+            wb = openpyxl.load_workbook(BytesIO(file_data), read_only=True, data_only=True)
+            for sheet in wb.worksheets:
+                yield list(sheet.iter_rows(values_only=True))
+            wb.close()
+        else:
+            wb = xlrd.open_workbook(file_contents=file_data)
+            for sheet in wb.sheets():
+                yield [tuple(cell.value for cell in sheet.row(r)) for r in range(sheet.nrows)]
+
     def amz_map_import_xls_ept(self):
         """
         This method will help to read imported xls or xlsx file.
         :return: mapped products count (int)
         """
-        sheets = xlrd.open_workbook(file_contents=base64.b64decode(self.choose_file.decode('UTF-8')))
-        header = dict()
-        is_header = False
+        file_data = base64.b64decode(self.choose_file)
+        ext = os.path.splitext(self.file_name)[1].lower()
         instance_dict = {}
         map_product_count = 0
-        row_number = 1
-        for sheet in sheets.sheets():
-            for row_no in range(sheet.nrows):
+
+        for sheet_rows in self._amz_iter_xls_sheets_ept(file_data, ext):
+            is_header = False
+            header = {}
+            row_number = 1
+            for raw_row in sheet_rows:
                 if not is_header:
-                    headers = [d.value for d in sheet.row(row_no)]
-                    # read imported file header is valid or not
+                    headers = [str(c) if c is not None else '' for c in raw_row]
                     self.amz_read_import_file_header(headers)
-                    [header.update({d: headers.index(d)}) for d in headers]
+                    header = {h: i for i, h in enumerate(headers)}
                     is_header = True
                     continue
-                row = dict()
-                [row.update({k: sheet.row(row_no)[v].value}) for k, v in header.items() for c in
-                 sheet.row(row_no)]
+                row = {k: raw_row[v] if v < len(raw_row) else None for k, v in header.items()}
                 row_number += 1
                 for key in ['Seller SKU', 'Internal Reference', 'Title']:
                     if isinstance(row.get(key), float):
@@ -1601,7 +1625,8 @@ class AmazonProcessImportExport(models.TransientModel):
         if not product_id:
             message = """ Line Skipped due to product not found seller sku %s || Internal
              Reference %s """ % (seller_sku, odoo_default_code)
-            instace_obj= self.env[AMZ_INSTANCE_EPT].search([('name', '=', line_vals.get('Marketplace'))])
+            instace_obj= self.env[AMZ_INSTANCE_EPT].search([('name', '=', line_vals.get('Marketplace')),
+                                                            ('seller_id', '=', self.seller_id.id)])
             common_log_line_obj.create_common_log_line_ept(
                 message=message, model_name='product.product', fulfillment_by=fullfillment_by, default_code=seller_sku,
                 mismatch_details=True, module='amazon_ept', operation_type='import', amz_instance_ept=instace_obj.id,
@@ -1659,3 +1684,18 @@ class AmazonProcessImportExport(models.TransientModel):
             'view_id': form_id.id,
             'target': 'current'
         }
+
+    def amz_removal_tracking_report(self):
+        if not self.report_start_date:
+            self.report_start_date = self._context.get('report_start_date')
+            self.report_end_date = self._context.get('report_end_date')
+        removal_tracking_report_record = self.env['amazon.removal.tracking.report.history']
+        if not self.report_start_date or not self.report_end_date:
+            raise UserError(_(DATE_VALIDATION_MESSAGE))
+        removal_tracking_report_vals = self.prepare_report_values()
+        removal_tracking_report_record = removal_tracking_report_record.create(
+            removal_tracking_report_vals)
+        removal_tracking_report_record.request_report()
+        return self.return_report_tree_form_view('Removal Tracking Report Request History', 'form', 'form',
+                                                 'amazon.removal.tracking.report.history',
+                                                 removal_tracking_report_record.id)

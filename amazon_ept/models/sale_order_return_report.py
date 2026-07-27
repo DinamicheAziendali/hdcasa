@@ -77,7 +77,7 @@ class SaleOrderReturnReport(models.Model):
     attachment_id = fields.Many2one('ir.attachment', string="Attachment",
                                     help="Attachment Id for Customer Return csv file")
     return_count = fields.Integer(compute="_compute_total_returns", string="Returns")
-    return_picking_count = fields.Integer(compute="_compute_total_returns", string="Returns")
+    return_picking_count = fields.Integer(compute="_compute_total_returns", string="Returns Delivery")
     report_request_id = fields.Char(size=256, string='Report Request ID',
                                     help="Report request id to recognise unique request")
     report_document_id = fields.Char(string='Report Document ID',
@@ -448,6 +448,7 @@ class SaleOrderReturnReport(models.Model):
         :return: dict {}, dict{}
         """
         log_line_obj = self.env['common.log.lines.ept']
+        move_lines = move_lines.filtered(lambda x:not x.amz_return_report_id)
         for move in move_lines:
             qty = move.product_qty - sum(move.move_dest_ids.filtered(
                 lambda m: m.state in ['partially_available', 'assigned', 'done']
@@ -534,15 +535,17 @@ class SaleOrderReturnReport(models.Model):
                 if move.product_id.tracking in ['lot', 'serial']:
                     new_move.write({'move_orig_ids': [(4, m.id) for m in move]})
                 new_move._action_assign()
-                new_move._set_quantity_done(qty)
+                if self.seller_id.allow_negative_stock or new_move.state == 'assigned':
+                    new_move._set_quantity_done(qty)
                 # write lot_id if origin move quant location usage is customer and quantty > 0 and
                 # lot_id found in the quant.
                 origin_move_quant_ids = move.move_line_ids.lot_id.quant_ids.filtered(
                     lambda ql: ql.location_id.usage == 'customer' and ql.quantity > 0 and ql.lot_id)
                 if origin_move_quant_ids and not new_move.move_line_ids.lot_id:
                     new_move.move_line_ids.write({'lot_id': origin_move_quant_ids[0].lot_id.id})
-                new_move.picked = True
-                new_move._action_done()
+                if self.seller_id.allow_negative_stock or new_move.state == 'assigned':
+                    new_move.picked = True
+                    new_move._action_done()
         message = 'Customer Return Process Completed.'
         log_line_obj.create_common_log_line_ept(
             message=message, model_name=SALE_ORDER_RETURN_REPORT, module='amazon_ept', operation_type='import',
@@ -584,9 +587,10 @@ class SaleOrderReturnReport(models.Model):
                                              'fba_returned_date': return_date, 'detailed_disposition': disposition,
                                              'status_ept': status, 'move_dest_ids': []})
                 amz_return_move._action_assign()
-                amz_return_move._set_quantity_done(abs(qty))
-                amz_return_move.picked = True
-                amz_return_move._action_done()
+                if self.seller_id.allow_negative_stock or amz_return_move.state == 'assigned':
+                    amz_return_move._set_quantity_done(abs(qty))
+                    amz_return_move.picked = True
+                    amz_return_move._action_done()
             if return_picking and return_picking.move_ids:
                 return_picking.move_ids.write({'amz_return_report_id': self.id})
 

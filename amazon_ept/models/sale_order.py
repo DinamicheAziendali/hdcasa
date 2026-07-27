@@ -981,30 +981,58 @@ class SaleOrder(models.Model):
 
     @api.model
     def check_already_status_updated_in_amazon(self, seller, marketplaceids, instances, next_token={}):
-        """Create Object for the integrate with amazon"""
+        """
+        Check whether FBM orders have already had their status updated in Amazon.
+
+        Two execution paths:
+        - Individual order  (context key ``order`` is set): query Amazon **directly by
+          AmazonOrderId** instead of a broad date-range scan, so only that specific order's
+          status is verified.  No ``updated_after`` date is needed and pagination is skipped.
+        - Bulk run (no context order): keep the original ``updated_after`` date-range approach
+          that walks all unshipped FBM orders and supports ``next_token`` pagination.
+        """
         # warehouse_ids = list(set(map(lambda x: x.warehouse_id.id, instances))) no need to check warehouse
-        sales_orders = self.amz_not_updated_in_amazon_fbm_orders(instances)
         individual_order = self._context.get('order')
         if individual_order:
             sales_orders = individual_order
+        else:
+            sales_orders = self.amz_not_updated_in_amazon_fbm_orders(instances)
         if not sales_orders:
             return [], {}
-        updated_after_date = sales_orders[0].date_order - timedelta(+1)
         marketplaceids = tuple(marketplaceids)
-        if updated_after_date:
-            db_import_time = time.strptime(str(updated_after_date), DATE_YMDHMS)
-            db_import_time = time.strftime(DATE_YMDTHMS, db_import_time)
-            start_date = time.strftime(DATE_YMDTHMS, time.gmtime(
-                time.mktime(time.strptime(db_import_time, DATE_YMDTHMS))))
-            updated_after_date = str(start_date) + 'Z'
-        kwargs = self.prepare_amazon_request_report_kwargs(seller, 'check_status_updated_in_amazon_sp_api')
-        kwargs.update({'marketplaceids': marketplaceids, 'updated_after': updated_after_date, })
-        if next_token:
-            kwargs.update({'next_token': next_token})
+        if individual_order:
+            # Query Amazon directly by order ID(s).
+            # Amazon SP-API GET /orders/v0/orders accepts AmazonOrderIds together with
+            # MarketplaceIds and returns only the matching orders — exact, fast, no pagination
+            # needed — instead of fetching all orders updated after a date just to find one.
+            kwargs = self.env['shipping.report.request.history'].prepare_amazon_request_report_kwargs(seller)
+            kwargs.update({'emipro_api': 'get_amazon_orders_sp_api'})
+            kwargs.update({'sale_order_list': sales_orders.amz_order_reference})
+        else:
+            kwargs = self.prepare_amazon_request_report_kwargs(seller, 'check_status_updated_in_amazon_sp_api')
+            # Bulk path: derive the earliest order date and ask Amazon for every unshipped FBM
+            # order updated after that date (original behavior, supports next_token pagination).
+            updated_after_date = sales_orders[0].date_order - timedelta(+1)
+            if updated_after_date:
+                db_import_time = time.strptime(str(updated_after_date), DATE_YMDHMS)
+                db_import_time = time.strftime(DATE_YMDTHMS, db_import_time)
+                start_date = time.strftime(DATE_YMDTHMS, time.gmtime(
+                    time.mktime(time.strptime(db_import_time, DATE_YMDTHMS))))
+                updated_after_date = str(start_date) + 'Z'
+            kwargs.update({'marketplaceids': marketplaceids, 'updated_after': updated_after_date})
+            if next_token:
+                kwargs.update({'next_token': next_token})
         response = iap_tools.iap_jsonrpc(DEFAULT_ENDPOINT, params=kwargs, timeout=1000)
         if response.get('error', False):
-            raise UserError(_(response.get('error', {})))
+            if response.get('result', False):
+                time.sleep(30)
+            else:
+                raise UserError(_(response.get('error', {})))
         list_of_wrapper = response.get('result', [])
+        if individual_order and list_of_wrapper:
+            for ord_dict in list_of_wrapper.get('Orders'):
+                if ord_dict.get('OrderStatus') in ['Unshipped','PartiallyShipped']:
+                    return [individual_order], ''
         unshipped_sales_orders = self.prepare_amazon_fbm_unshipped_orders(list_of_wrapper, sales_orders)
         next_token_wrapper = list_of_wrapper[-1].get('NextToken', '') if \
             list_of_wrapper and isinstance(list_of_wrapper, list) else {}
@@ -1221,6 +1249,8 @@ class SaleOrder(models.Model):
         product_obj = self.env['product.product']
         seller_sku = order_details.get('SellerSKU', '')
         odoo_product = amz_product_obj.search_product(seller_sku)
+        if odoo_product:
+            return odoo_product, skip_order
         if not instance.seller_id.create_new_product:
             skip_order = True
             res_model_name = AMZ_PRODUCT_EPT
@@ -1659,7 +1689,8 @@ class SaleOrder(models.Model):
         :return: list of orders response, next token
         """
         kwargs = self.prepare_amazon_request_report_kwargs(seller, 'order_by_next_token_sp_api')
-        kwargs.update({'next_token': next_token, 'restricted_resources': ['buyerInfo', 'shippingAddress']})
+        kwargs.update({'next_token': next_token, 'restricted_resources': ['buyerInfo', 'shippingAddress'],
+                       'need_to_break_next_order': True})
         response = iap_tools.iap_jsonrpc(DEFAULT_ENDPOINT, params=kwargs, timeout=1000)
         if response.get('error', False):
             if self._context.get('is_auto_process', False):
@@ -2267,6 +2298,7 @@ class SaleOrder(models.Model):
             raise UserError(_(AMAZON_INSTANCE_NOT_CONFIGURED_WARNING + " %s" % seller.name))
         next_token = {}
         flag = True
+        start_time = time.time()
         while next_token or flag:
             amazon_orders, next_token = self.check_already_status_updated_in_amazon(seller, marketplaceids,
                                                                                     seller.instance_ids, next_token)
@@ -2286,6 +2318,8 @@ class SaleOrder(models.Model):
             results = response.get('results', {})
             self.process_amazon_update_tracking_feed_response(results, data, seller, shipment_pickings)
             self._cr.commit()
+            if time.time() - start_time >= 600:
+                break
         return True
 
     def process_amazon_update_tracking_feed_response(self, results, data, seller, shipment_pickings):
@@ -2409,6 +2443,9 @@ class SaleOrder(models.Model):
                 is_skip = self.check_amazon_update_status_pickings(amazon_order, picking)
                 if is_skip:
                     continue
+                has_invalid_carrier = self.check_amz_carrier_name_special_chars(picking, amazon_order)
+                if has_invalid_carrier:
+                    continue
                 fulfillment_date_concat = self.get_shipment_fulfillment_date(picking)
                 shipment_pickings.append(picking.id)
                 # will manage multiple tracking number into the delivery order if carrier tracking ref not set into
@@ -2470,8 +2507,8 @@ class SaleOrder(models.Model):
             if move_line.quantity < 0.0:
                 continue
             tracking_no = move_line.result_package_id.tracking_no if move_line.result_package_id else 'UNKNOWN'
-            if tracking_no == 'UNKNOWN':
-                continue
+            # if tracking_no == 'UNKNOWN':
+            #     continue
             quantity = tracking_no_with_qty.get(tracking_no, 0.0)
             quantity = quantity + move_line.quantity
             tracking_no_with_qty.update({tracking_no: quantity})
@@ -2647,13 +2684,13 @@ class SaleOrder(models.Model):
         return message_information, message_id, update_move_ids
 
     @staticmethod
-    def amz_get_sale_line_product_qty_ept(sale_line_id):
+    def amz_get_sale_line_product_qty_ept(sale_line_id, product_qty=None):
         """
         Divide product quantity with asin quantity if asin qty is available in product
         :param sale_line_id: sale.order.line()
         :return: int
         """
-        product_qty = sale_line_id.product_qty
+        product_qty = product_qty if product_qty else sale_line_id.product_qty
         if sale_line_id and sale_line_id.amazon_product_id and \
                 sale_line_id.amazon_product_id.allow_package_qty:
             asin_qty = sale_line_id.amazon_product_id.asin_qty
@@ -3142,3 +3179,78 @@ class SaleOrder(models.Model):
             carrier = delivery_carrier_obj.search([('amz_shipping_service_level_category', '=', shipping_category)],
                                                   limit=1)
         return carrier
+
+    def check_amz_carrier_name_special_chars(self, picking, amazon_order):
+        """
+        Check special characters in:
+          1. Warehouse partner address (street, street2, city) — always
+          2. Carrier FBM shipping method — always
+          3. Carrier name — only when carrier_code == 'Other'
+        If any invalid characters found, mismatch log is created and True is returned.
+        @param picking: stock.picking()
+        @param amazon_order: sale.order()
+        @return: bool
+        @author: Gopal Chouhan on date 11-March-2026
+        @updated: Meet Bhensdadiya on date 14-April-2026
+        """
+        safe_chars_pattern = re.compile(r'[^a-zA-Z0-9\s\-\.,]')
+        issues = []
+
+        # ── 1. Warehouse partner address — checked ALWAYS ─────────────────
+        warehouse = picking.picking_type_id.warehouse_id
+        partner = warehouse.partner_id if warehouse else None
+        if partner:
+            address_fields = [
+                ('Street', partner.street),
+                ('Street2', partner.street2),
+                ('City', partner.city),
+            ]
+            for field_label, field_value in address_fields:
+                if not field_value:
+                    continue
+                match = safe_chars_pattern.findall(field_value)
+                if match:
+                    issues.append(
+                        "Warehouse Address %s '%s': invalid character(s) %s found. "
+                        "Only letters, numbers, spaces, dash, dot and comma are allowed."
+                        % (field_label, field_value, match)
+                    )
+
+        # ── 2. Carrier FBM shipping method — checked ALWAYS ──────────────
+        carrier = picking.carrier_id
+        fbm_method = carrier.fbm_shipping_method if carrier else None
+        if fbm_method:
+            match = safe_chars_pattern.findall(fbm_method)
+            if match:
+                issues.append(
+                    "FBM Shipping Method '%s': invalid character(s) %s found. "
+                    "Only letters, numbers, spaces, dash, dot and comma are allowed."
+                    % (fbm_method, match)
+                )
+
+        # ── 3. Carrier name — only checked when carrier_code == 'Other' ───
+        carrier_code = self.amz_get_carrier_code_ept(picking)
+        if carrier_code == 'Other':
+            carrier_name = self.amz_get_carrier_name_ept(picking)
+            if carrier_name:
+                match = safe_chars_pattern.findall(carrier_name)
+                if match:
+                    issues.append(
+                        "Carrier Name '%s': invalid character(s) %s found. "
+                        "Only letters, numbers, spaces, dash, dot and comma are allowed."
+                        % (carrier_name, match)
+                    )
+
+        # ── Log and skip if any issues found ─────────────────────────────
+        if issues:
+            message = (
+                    "Amazon Update Order Status Skipped | Order: %s | Picking: %s | "
+                    "Issues: %s | "
+                    "Please fix the above fields and Re-try."
+                    % (amazon_order.name, picking.name, ' | '.join(issues))
+            )
+            _logger.info("Amazon Feed Skipped - %s", message)
+            self.amz_mismatch_log_for_update_order_status(message, amazon_order)
+            return True
+
+        return False
