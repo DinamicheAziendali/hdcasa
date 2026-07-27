@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Angelo Margarella (www.hdcasa.it) — License OPL-1 -->
+<odoo>
+    <record id="view_move_form_manomano" model="ir.ui.view">
+        <field name="name">account.move.form.manomano</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_move_form"/>
+        <field name="arch" type="xml">
+            <header position="inside">
+                <button name="action_manomano_send_invoice" type="object"
+                        string="Invia a ManoMano"
+                        invisible="not manomano_order_map_id or state != 'posted' or manomano_document_id or move_type != 'out_invoice'"
+                        help="Carica su ManoMano il PDF di questa fattura."/>
+            </header>
+            <field name="invoice_origin" position="after">
+                <field name="manomano_order_map_id" invisible="1"/>
+                <field name="manomano_document_id" readonly="1"
+                       invisible="not manomano_document_id"/>
+            </field>
+        </field>
+    </record>
+</odoo>

@@ -727,26 +727,25 @@ class BricoBravoConnector(MarketplaceConnector):
             return False
         picking = pickings[0]
 
-        carrier = picking.carrier_id
-        if not carrier:
+        source_model, source_res_id, source_display = (
+            self.channel._picking_carrier_source(picking))
+        if not source_res_id:
             self._log_shipment(
                 external_id, "error",
                 "Push spedizione #%s non eseguito: il picking %s non ha un "
-                "corriere (carrier_id) da cui ricavare il codice marketplace."
+                "vettore da cui ricavare il codice marketplace."
                 % (external_id, picking.name))
             return False
 
-        carrier_map = self.env["centrivo.carrier.map"].search([
-            ("channel_id", "=", self.channel.id),
-            ("carrier_id", "=", carrier.id),
-            ("company_id", "=", self.channel.company_id.id),
-        ], limit=1)
+        carrier_map = self.env["centrivo.carrier.map"].resolve_external_code(
+            self.channel, source_model, source_res_id, self.channel.company_id)
         if not carrier_map:
             self._log_shipment(
                 external_id, "error",
-                "Push spedizione #%s non eseguito: nessun mapping corriere per "
-                "'%s' sul canale. Configura un centrivo.carrier.map."
-                % (external_id, carrier.name))
+                "Push spedizione #%s non eseguito: nessun mapping per il "
+                "vettore '%s' sul canale. Aggiungi la riga in "
+                "Integrations → Mapping Corrieri."
+                % (external_id, source_display))
             return False
 
         # --- COSTRUZIONE BODY ----------------------------------------------

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Angelo Margarella (www.hdcasa.it) — License OPL-1 -->
+<odoo>
+    <record id="view_integration_config_form" model="ir.ui.view">
+        <field name="name">centrivo.integration.config.form</field>
+        <field name="model">centrivo.integration.config</field>
+        <field name="arch" type="xml">
+            <form string="Configurazione integrazioni">
+                <sheet>
+                    <group string="Push spedizioni">
+                        <field name="carrier_source_field_id"
+                               options="{'no_create': True, 'no_open': True}"/>
+                        <field name="carrier_source_field_name" readonly="1"/>
+                    </group>
+                    <p class="text-muted">
+                        Lasciando vuoto il campo vettore si usa il corriere
+                        nativo di Odoo, come prima di questa impostazione.
+                        Il codice vettore atteso dal singolo marketplace si
+                        configura invece in <b>Mapping Corrieri</b>, che resta
+                        per canale.
+                    </p>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_integration_config" model="ir.actions.server">
+        <field name="name">Configurazione</field>
+        <field name="model_id" ref="model_centrivo_integration_config"/>
+        <field name="state">code</field>
+        <field name="code">action = model.open_config()</field>
+    </record>
+
+    <menuitem id="menu_integration_config"
+              name="Configurazione"
+              parent="menu_integrations_root"
+              action="action_integration_config"
+              sequence="50"/>
+</odoo>

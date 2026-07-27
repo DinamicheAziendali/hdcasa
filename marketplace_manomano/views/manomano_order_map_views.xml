@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Angelo Margarella (www.hdcasa.it) — License OPL-1 -->
+<odoo>
+    <record id="view_order_map_form_manomano" model="ir.ui.view">
+        <field name="name">centrivo.order.map.form.manomano</field>
+        <field name="model">centrivo.order.map</field>
+        <field name="inherit_id" ref="integrations_core.view_integration_order_map_form"/>
+        <field name="arch" type="xml">
+            <header position="inside">
+                <button name="action_manomano_refuse" type="object"
+                        string="Rifiuta su ManoMano"
+                        confirm="Il rifiuto dell'ordine su ManoMano è IRREVERSIBILE: il cliente verrà avvisato che l'ordine non sarà evaso. Continuare?"
+                        invisible="not manomano_is_manomano or manomano_refused"/>
+            </header>
+            <field name="external_id" position="after">
+                <field name="manomano_is_manomano" invisible="1"/>
+                <field name="manomano_refused" readonly="1"
+                       invisible="not manomano_is_manomano"/>
+            </field>
+        </field>
+    </record>
+</odoo>

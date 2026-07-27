@@ -293,6 +293,29 @@ class IntegrationChannel(models.Model):
             channel.last_pull = fields.Datetime.now()
         return True
 
+    def _picking_carrier_source(self, picking):
+        """Vettore del trasferimento come (modello, id, nome per esteso).
+
+        Legge il campo configurato in Configurazione integrazioni, in modo
+        DINAMICO: se il campo non esiste (modulo di terzi non installato), non è
+        relazionale, o è vuoto sul trasferimento, si ripiega sul corriere
+        nativo `carrier_id`. Così le spedizioni nate fuori dal flusso di terzi
+        continuano a funzionare.
+
+        Ritorna ("", 0, "") se non c'è alcun vettore.
+        """
+        self.ensure_one()
+        name = self.env["centrivo.integration.config"].get_carrier_source_field_name()
+        record = False
+        field = picking._fields.get(name)
+        if field is not None and field.type == "many2one":
+            record = picking[name]
+        if not record:
+            record = picking.carrier_id
+        if not record:
+            return "", 0, ""
+        return record._name, record.id, record.display_name or ""
+
     # ------------------------------------------------------------------
     # EXPORT feed prezzi/giacenze (TASK_23)
     # ------------------------------------------------------------------

@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Angelo Margarella (www.hdcasa.it) — License OPL-1 -->
+<odoo>
+    <record id="view_channel_form_manomano" model="ir.ui.view">
+        <field name="name">centrivo.channel.form.manomano</field>
+        <field name="model">centrivo.channel</field>
+        <field name="inherit_id" ref="integrations_core.view_integration_channel_form"/>
+        <field name="arch" type="xml">
+            <!-- Pulsante "Sincronizza offerte" nell'HEADER, accanto a "Scarica
+                 ordini", ben visibile. Solo sui canali ManoMano. -->
+            <header position="inside">
+                <button name="action_manomano_push_offers" type="object"
+                        string="Sincronizza offerte"
+                        class="btn-primary"
+                        invisible="connector_code != 'manomano'"
+                        help="Crea/aggiorna su ManoMano le offerte (prezzo, giacenza, spedizione) dei prodotti taggati, per i contract configurati."/>
+                <button name="action_manomano_check_offers" type="object"
+                        string="Verifica offerte su ManoMano"
+                        invisible="connector_code != 'manomano'"
+                        help="SOLA LETTURA: chiede a ManoMano prezzo, giacenza, stato ed errori delle offerte. Non modifica nulla. L'esito si legge nel Log operazioni (operazione check_offers)."/>
+            </header>
+
+            <notebook position="inside">
+                <page string="ManoMano" name="manomano"
+                      invisible="connector_code != 'manomano'">
+                    <group>
+                        <group string="Mercati (contract)">
+                            <field name="manomano_contract_codes"/>
+                        </group>
+                        <group string="Spedizione">
+                            <field name="manomano_carrier_grid_name"/>
+                        </group>
+                        <group string="Tempi di consegna">
+                            <field name="manomano_transit_days_min"/>
+                            <field name="manomano_transit_days_max"/>
+                        </group>
+                        <group string="Fatture">
+                            <field name="manomano_invoice_auto"/>
+                        </group>
+                    </group>
+                    <p class="text-muted">
+                        Prezzo, giacenza e selezione prodotti si configurano nel
+                        tab <b>Export</b> (listino di vendita, tipo/ambito quantità,
+                        tag prodotti). Lo SKU inviato a ManoMano è il
+                        <b>Riferimento interno</b> (default_code) del prodotto.
+                    </p>
+                </page>
+
+                <page string="Feed prodotto" name="manomano_feed"
+                      invisible="connector_code != 'manomano'">
+                    <div class="mb-3">
+                        <button name="action_manomano_generate_product_feed"
+                                type="object" class="btn-primary"
+                                string="Genera feed prodotto"/>
+                        <button name="action_manomano_sync_taxonomy"
+                                type="object" class="btn-secondary ms-2"
+                                string="Aggiorna campi da ManoMano"
+                                help="SOLA LETTURA: scarica da ManoMano l'elenco dei campi del feed, con obbligatorietà e valori ammessi. Non modifica prodotti né mappature."/>
+                    </div>
+                    <group>
+                        <field name="manomano_product_feed_url" readonly="1"
+                               widget="CopyClipboardChar"/>
+                        <field name="manomano_product_feed_generated_at" readonly="1"/>
+                    </group>
+                    <field name="manomano_feed_map_ids">
+                        <list editable="bottom">
+                            <field name="mm_field_id"/>
+                            <field name="mm_mandatory" string="Obbl." readonly="1"/>
+                            <field name="mm_has_values" column_invisible="1"/>
+                            <field name="source_type"/>
+                            <field name="source_field_id"
+                                   domain="[('model','in',['product.template','product.product'])]"
+                                   invisible="source_type != 'field'"/>
+                            <field name="attribute_id"
+                                   invisible="source_type != 'attribute'"/>
+                            <field name="fixed_value"
+                                   invisible="source_type != 'fixed'"/>
+                            <field name="image_index"
+                                   invisible="source_type != 'gallery_image'"/>
+                            <button name="action_create_attribute" type="object"
+                                    icon="fa-magic"
+                                    confirm="Verrà creato in Odoo un attributo prodotto con TUTTI i valori ammessi da ManoMano per questa colonna (anche centinaia), e questa riga verrà impostata sulla fonte «Attributo prodotto». Continuare?"
+                                    help="Crea in Odoo l'attributo con i valori ammessi da ManoMano"
+                                    invisible="not mm_has_values"/>
+                        </list>
+                    </field>
+                    <p class="text-muted">
+                        Mappa le colonne ManoMano ai campi Odoo (o valori fissi/
+                        immagini). Obbligatorie: sku, ean (o sku_manufacturer),
+                        brand, title, description, image_1. Incolla l'URL del feed
+                        nella Toolbox ManoMano → Catalogo → importazione automatica.
+                    </p>
+                </page>
+            </notebook>
+
+            <!-- Base URL è automatico in base all'Ambiente (sandbox/produzione):
+                 sui canali ManoMano il campo è nascosto per evitare confusione. -->
+            <xpath expr="//field[@name='base_url']" position="attributes">
+                <attribute name="invisible">connector_code == 'manomano'</attribute>
+            </xpath>
+
+            <!-- ManoMano usa l'API, non i feed CSV: nasconde l'intero tab
+                 "Mapping catalogo" (BricoBravo-only) sui canali ManoMano. -->
+            <page name="catalog" position="attributes">
+                <attribute name="invisible">connector_code == 'manomano'</attribute>
+            </page>
+
+            <!-- Nel tab Export: i due pulsanti feed (stock CSV) sono BricoBravo-only. -->
+            <xpath expr="//page[@name='export']//button[@name='action_generate_stock_feed']/.."
+                   position="attributes">
+                <attribute name="invisible">connector_code == 'manomano'</attribute>
+            </xpath>
+
+            <!-- Gruppo "Feed" (export_token/stock_feed_generated_at): BricoBravo-only. -->
+            <xpath expr="//field[@name='export_token']/.." position="attributes">
+                <attribute name="invisible">connector_code == 'manomano'</attribute>
+            </xpath>
+
+            <!-- Gruppo URL dei feed (da incollare su BricoBravo): BricoBravo-only. -->
+            <xpath expr="//field[@name='stock_feed_url']/.." position="attributes">
+                <attribute name="invisible">connector_code == 'manomano'</attribute>
+            </xpath>
+        </field>
+    </record>
+</odoo>

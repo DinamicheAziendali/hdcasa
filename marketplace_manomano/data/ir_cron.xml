@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Angelo Margarella (www.hdcasa.it) — License OPL-1 -->
+<odoo>
+    <record id="cron_manomano_push_offers" model="ir.cron">
+        <field name="name">ManoMano: sincronizza offerte (prezzo/giacenza)</field>
+        <field name="model_id" ref="integrations_core.model_centrivo_channel"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_manomano_push_offers()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">hours</field>
+        <field name="active" eval="False"/>
+    </record>
+
+    <record id="cron_manomano_product_feeds" model="ir.cron">
+        <field name="name">ManoMano: genera feed prodotto</field>
+        <field name="model_id" ref="integrations_core.model_centrivo_channel"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_manomano_product_feeds()</field>
+        <field name="interval_number">12</field>
+        <field name="interval_type">hours</field>
+        <field name="active" eval="False"/>
+    </record>
+
+    <record id="cron_manomano_push_invoices" model="ir.cron">
+        <field name="name">ManoMano: invia fatture in coda</field>
+        <field name="model_id" ref="account.model_account_move"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_manomano_push_invoices()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">hours</field>
+        <field name="active" eval="False"/>
+    </record>
+</odoo>

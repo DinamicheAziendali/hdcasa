@@ -6,7 +6,9 @@
         <field name="arch" type="xml">
             <list string="Mapping Corrieri">
                 <field name="channel_id"/>
-                <field name="carrier_id"/>
+                <field name="source_record_key"/>
+                <field name="source_display"/>
+                <field name="carrier_id" optional="hide"/>
                 <field name="external_code"/>
                 <field name="tracking_url_template"/>
                 <field name="company_id" groups="base.group_multi_company"/>
@@ -23,6 +25,8 @@
                     <group>
                         <group>
                             <field name="channel_id"/>
+                            <field name="source_record_key"/>
+                            <field name="source_display" readonly="1"/>
                             <field name="carrier_id"/>
                             <field name="external_code"/>
                         </group>
@@ -33,7 +37,12 @@
                         </group>
                     </group>
                     <p class="text-muted">
-                        Il <strong>Codice corriere marketplace</strong> mostra solo i
+                        <strong>Seleziona vettore</strong> elenca i record del modello
+                        configurato in Configurazione integrazioni (il vettore usato in
+                        produzione, anche se non è un corriere Odoo). Il campo
+                        <strong>Corriere Odoo</strong> resta per compatibilità con i
+                        mapping già configurati sul metodo di consegna nativo. Il
+                        <strong>Codice corriere marketplace</strong> mostra solo i
                         codici ammessi dal connettore del canale selezionato. Il
                         <strong>Template URL</strong> deve contenere il segnaposto
                         <code>{tracking}</code>, che verrà sostituito dal numero di

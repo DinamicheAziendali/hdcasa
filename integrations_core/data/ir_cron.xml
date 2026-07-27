@@ -18,7 +18,7 @@
              Riusa l'orchestratore cron_pull_all_channels: per ogni canale attivo
              fa pull → import → conferma → acquired (+ retry_pending_acquired). -->
         <record id="cron_pull_all_channels" model="ir.cron">
-            <field name="name">BricoBravo: pull ordini in entrata</field>
+            <field name="name">Integrations: scarica ordini (tutti i marketplace)</field>
             <field name="model_id" ref="model_centrivo_channel"/>
             <field name="state">code</field>
             <field name="code">model.cron_pull_all_channels()</field>
@@ -33,7 +33,7 @@
              comunica corriere/tracking. NB: operativo solo quando ShipTracker
              popolerà carrier_tracking_ref (non ancora integrato). -->
         <record id="cron_push_shipments" model="ir.cron">
-            <field name="name">BricoBravo: push spedizioni</field>
+            <field name="name">Integrations: comunica spedizioni (tutti i marketplace)</field>
             <field name="model_id" ref="model_centrivo_channel"/>
             <field name="state">code</field>
             <field name="code">model.cron_push_shipments()</field>
@@ -45,7 +45,7 @@
 
         <!-- 3) Feed prezzi/giacenze (ogni 30 minuti di default). -->
         <record id="cron_generate_stock_feeds" model="ir.cron">
-            <field name="name">BricoBravo: genera feed prezzi/giacenze</field>
+            <field name="name">Integrations: genera feed prezzi/giacenze (CSV)</field>
             <field name="model_id" ref="model_centrivo_channel"/>
             <field name="state">code</field>
             <field name="code">model.cron_generate_stock_feeds()</field>
@@ -57,7 +57,7 @@
 
         <!-- 4) Feed catalogo completo (ogni 12 ore di default: cambia meno spesso). -->
         <record id="cron_generate_catalog_feeds" model="ir.cron">
-            <field name="name">BricoBravo: genera feed catalogo</field>
+            <field name="name">Integrations: genera feed catalogo (CSV)</field>
             <field name="model_id" ref="model_centrivo_channel"/>
             <field name="state">code</field>
             <field name="code">model.cron_generate_catalog_feeds()</field>

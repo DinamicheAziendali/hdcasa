@@ -6,3 +6,4 @@ from . import integration_order_map
 from . import integration_sku_map
 from . import integration_carrier_map
 from . import integration_job_log
+from . import integration_config

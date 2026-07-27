@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright 2026 Angelo Margarella (www.hdcasa.it) — License OPL-1 -->
+<odoo>
+    <record id="view_manomano_feed_field_list" model="ir.ui.view">
+        <field name="name">centrivo.manomano.feed.field.list</field>
+        <field name="model">centrivo.manomano.feed.field</field>
+        <field name="arch" type="xml">
+            <list string="Campi feed ManoMano">
+                <field name="name"/>
+                <field name="label"/>
+                <field name="mandatory"/>
+                <field name="datatype"/>
+                <field name="contract_type"/>
+                <field name="has_values" string="Lista chiusa"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_manomano_feed_field_form" model="ir.ui.view">
+        <field name="name">centrivo.manomano.feed.field.form</field>
+        <field name="model">centrivo.manomano.feed.field</field>
+        <field name="arch" type="xml">
+            <form string="Campo feed ManoMano">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name" readonly="1"/>
+                            <field name="label" readonly="1"/>
+                            <field name="mm_id" readonly="1"/>
+                            <field name="active" readonly="1"
+                                   help="Stato governato dallo scarico dei campi da ManoMano: un campo si disattiva da solo quando ManoMano smette di esporlo, non è una scelta dell'utente."/>
+                        </group>
+                        <group>
+                            <field name="mandatory" readonly="1"/>
+                            <field name="datatype" readonly="1"/>
+                            <field name="contract_type" readonly="1"/>
+                            <field name="units_list_id" readonly="1"/>
+                        </group>
+                    </group>
+                    <group string="Spiegazione di ManoMano">
+                        <field name="description" nolabel="1" readonly="1"/>
+                    </group>
+                    <group string="Valori ammessi">
+                        <field name="value_ids" nolabel="1" readonly="1">
+                            <list>
+                                <field name="name"/>
+                                <field name="name_source"/>
+                            </list>
+                        </field>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_manomano_feed_field" model="ir.actions.act_window">
+        <field name="name">Campi feed ManoMano</field>
+        <field name="res_model">centrivo.manomano.feed.field</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="menu_manomano_feed_field"
+              name="Campi feed ManoMano"
+              parent="integrations_core.menu_integrations_root"
+              action="action_manomano_feed_field"
+              sequence="60"/>
+</odoo>

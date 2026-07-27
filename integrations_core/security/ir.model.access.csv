@@ -4,3 +4,5 @@ access_integration_order_map_user,centrivo.order.map user,model_centrivo_order_m
 access_integration_sku_map_user,centrivo.sku.map user,model_centrivo_sku_map,base.group_user,1,1,1,1
 access_integration_carrier_map_user,centrivo.carrier.map user,model_centrivo_carrier_map,base.group_user,1,1,1,1
 access_integration_job_log_user,centrivo.job.log user,model_centrivo_job_log,base.group_user,1,1,1,1
+access_integration_config_user,centrivo.integration.config user,model_centrivo_integration_config,base.group_user,1,0,0,0
+access_integration_config_manager,centrivo.integration.config manager,model_centrivo_integration_config,base.group_system,1,1,1,1

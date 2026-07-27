@@ -1,0 +1,6 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_manomano_feed_map_user,centrivo.manomano.feed.map user,model_centrivo_manomano_feed_map,base.group_user,1,1,1,1
+access_manomano_feed_field_user,centrivo.manomano.feed.field user,model_centrivo_manomano_feed_field,base.group_user,1,0,0,0
+access_manomano_feed_field_manager,centrivo.manomano.feed.field manager,model_centrivo_manomano_feed_field,base.group_system,1,1,1,1
+access_manomano_feed_field_value_user,centrivo.manomano.feed.field.value user,model_centrivo_manomano_feed_field_value,base.group_user,1,0,0,0
+access_manomano_feed_field_value_manager,centrivo.manomano.feed.field.value manager,model_centrivo_manomano_feed_field_value,base.group_system,1,1,1,1
