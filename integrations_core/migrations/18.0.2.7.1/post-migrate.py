@@ -95,37 +95,82 @@ NUOVI_NOMI_CRON = {
 }
 
 
-def _rinomina_cron(cr):
-    """Aggiorna l'etichetta dei cron generici, se ancora quella vecchia.
-
-    Dalla 16 `ir.cron` delega a `ir.actions.server`, quindi la colonna `name`
-    può stare sull'una o sull'altra tabella a seconda della versione: si guarda
-    lo schema invece di darlo per scontato, così la migrazione non solleva.
-    """
+def _tipo_colonna(cr, tabella, colonna):
+    """Tipo SQL di una colonna, o None se non esiste."""
     cr.execute("""
-        SELECT column_name FROM information_schema.columns
-         WHERE table_name = 'ir_cron' AND column_name = 'name'
+        SELECT data_type FROM information_schema.columns
+         WHERE table_name = %s AND column_name = %s
            AND table_schema = current_schema()
-    """)
-    nome_su_ir_cron = bool(cr.fetchone())
+    """, (tabella, colonna))
+    riga = cr.fetchone()
+    return riga[0] if riga else None
 
-    rinominati = 0
-    for xmlid, nuovo_nome in NUOVI_NOMI_CRON.items():
-        cr.execute("""
-            SELECT res_id FROM ir_model_data
-             WHERE module = 'integrations_core' AND name = %s AND model = 'ir.cron'
-        """, (xmlid,))
-        riga = cr.fetchone()
-        if not riga:
-            continue
-        cron_id = riga[0]
-        if nome_su_ir_cron:
-            cr.execute("UPDATE ir_cron SET name = %s WHERE id = %s",
-                       (nuovo_nome, cron_id))
+
+def _sql_rinomina(tabella, colonna_tipo, condizione_id):
+    """UPDATE che scrive l'etichetta rispettando il tipo reale della colonna.
+
+    In Odoo 18 il nome dell'azione server è un campo TRADOTTO, quindi in
+    database è `jsonb`: scriverci una stringa semplice fa fallire la query con
+    "invalid input syntax for type json". Quando la colonna è jsonb si
+    riscrivono tutte le lingue già presenti col nuovo testo (e se non ce n'è
+    nessuna si crea `en_US`), così non si perdono chiavi per strada.
+    """
+    if colonna_tipo == "jsonb":
+        valore = ("""COALESCE(
+                     (SELECT jsonb_object_agg(k, %s)
+                        FROM jsonb_each_text(COALESCE(name, '{}'::jsonb)) AS t(k, v)),
+                     jsonb_build_object('en_US', %s))""")
+    else:
+        valore = "%s"
+    return "UPDATE {tabella} SET name = {valore} WHERE {condizione}".format(
+        tabella=tabella, valore=valore, condizione=condizione_id)
+
+
+def _rinomina_cron(cr):
+    """Aggiorna l'etichetta dei cron generici. NON PUÒ far fallire l'update.
+
+    È un'operazione cosmetica: se qualcosa va storto si logga e si tira dritto,
+    perché nessun cliente deve vedersi bloccare l'installazione di un modulo per
+    il nome di un cron. Il SAVEPOINT serve proprio a questo: in PostgreSQL una
+    query fallita invalida l'intera transazione, quindi un try/except da solo
+    non basterebbe a proseguire.
+
+    Dalla 16 `ir.cron` delega il nome a `ir.actions.server`: si guarda lo schema
+    invece di darlo per scontato, e si rispetta il TIPO della colonna (in Odoo 18
+    è jsonb, perché il nome è tradotto).
+    """
+    cr.execute("SAVEPOINT rinomina_cron")
+    try:
+        if _tipo_colonna(cr, "ir_cron", "name"):
+            tabella = "ir_cron"
+            condizione = "id = %s"
+            tipo = _tipo_colonna(cr, "ir_cron", "name")
         else:
+            tabella = "ir_act_server"
+            condizione = ("id = (SELECT ir_actions_server_id FROM ir_cron "
+                          "WHERE id = %s)")
+            tipo = _tipo_colonna(cr, "ir_act_server", "name")
+        sql = _sql_rinomina(tabella, tipo, condizione)
+
+        rinominati = 0
+        for xmlid, nuovo_nome in NUOVI_NOMI_CRON.items():
             cr.execute("""
-                UPDATE ir_act_server SET name = %s
-                 WHERE id = (SELECT ir_actions_server_id FROM ir_cron WHERE id = %s)
-            """, (nuovo_nome, cron_id))
-        rinominati += cr.rowcount
-    _logger.info("Cron generici rinominati: %s.", rinominati)
+                SELECT res_id FROM ir_model_data
+                 WHERE module = 'integrations_core' AND name = %s
+                   AND model = 'ir.cron'
+            """, (xmlid,))
+            riga = cr.fetchone()
+            if not riga:
+                continue
+            parametri = ((nuovo_nome, nuovo_nome, riga[0]) if tipo == "jsonb"
+                         else (nuovo_nome, riga[0]))
+            cr.execute(sql, parametri)
+            rinominati += cr.rowcount
+    except Exception as exc:  # noqa: BLE001 - cosmetico: mai bloccare l'update
+        cr.execute("ROLLBACK TO SAVEPOINT rinomina_cron")
+        _logger.warning(
+            "Rinomina dei cron generici non riuscita (%s): i cron restano col "
+            "nome precedente. Nessun impatto sul funzionamento.", exc)
+    else:
+        cr.execute("RELEASE SAVEPOINT rinomina_cron")
+        _logger.info("Cron generici rinominati: %s.", rinominati)
