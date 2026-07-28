@@ -140,14 +140,10 @@ Endpoint, header, contract, offerte e ciclo ordini (accept/ship) sono ormai
 sugli endpoint REALI dell'API (fonte di verità: `docs/manomano-api-reference.md`,
 costruita dagli esempi curl ufficiali ManoMano). Restano aperti solo:
 
-1. **Lista corrieri ufficiale ManoMano**: i valori di `MANOMANO_CARRIERS` sono
-   plausibili (`dhl`, `gls`, `brt`, `ups`, `tnt`, `fedex`, `dpd`, `poste`,
-   `other`), da confermare con la lista ufficiale completa (incluso il
-   comportamento di `other` con carrier_name/tracking_url liberi).
-2. **Comportamento `eco_participation` per il mercato IT**: il campo è
+1. **Comportamento `eco_participation` per il mercato IT**: il campo è
    obbligatorio su FR (l'API segnala `INVALID_ECO_PARTICIPATION` se assente);
    da chiarire se/come si applica anche su IT.
-3. **Accept/spedizione multi-contract**: `accept_order` e `push_shipment`
+2. **Accept/spedizione multi-contract**: `accept_order` e `push_shipment`
    assumono attualmente **un solo contract per canale** (usano il primo
    configurato, `_first_contract_id`). Corretto nel caso attuale (IT, un
    contract); con più contract configurati un ordine del secondo mercato

@@ -21,6 +21,7 @@ ManoMano. La api_key non viene mai loggata.
 """
 import json
 import logging
+import time
 
 from odoo import fields
 
@@ -43,9 +44,26 @@ MANOMANO_URL_PRODUCTION = "https://partnersapi.manomano.com"
 # Header di autenticazione ManoMano (confermato da doc reale, non "Authorization").
 MANOMANO_AUTH_HEADER = "x-api-key"
 
-# Dimensione massima del blocco SKU per chiamata update_offers. DA CONFERMARE col
-# limite reale dell'API; valore prudenziale iniziale.
-OFFERS_BATCH_SIZE = 100
+# Dimensione massima del blocco SKU per chiamata PUT /api/v1/offers.
+# LIMITE REALE CONFERMATO DALL'API (2026-07-28): con 100 offerte per chiamata
+# ManoMano risponde HTTP 400 ERR_1405 "maximum 20 offers per request".
+# NON alzare questo valore: il tetto è imposto da loro, non è prudenza nostra.
+OFFERS_BATCH_SIZE = 20
+
+# Pausa fra un blocco di offerte e il successivo. Il tetto di 20 sopra moltiplica
+# per cinque il NUMERO di chiamate, e l'API sta dietro Cloudflare: sparate di
+# fila senza respiro fanno scattare il blocco 429 (error_code 1015). Un secondo
+# di pausa tiene il ritmo sotto le 60 chiamate al minuto.
+OFFERS_BATCH_PAUSE = 1.0
+
+# Gestione del 429 (Cloudflare "You are being rate limited"). La risposta porta
+# `retry_after` in secondi; loro raccomandano di raddoppiare l'attesa a ogni
+# tentativo e di fermarsi dopo 5. Il tetto per singola attesa evita che un
+# valore assurdo tenga occupato un worker Odoo all'infinito.
+RATE_LIMIT_STATUS = 429
+RATE_LIMIT_MAX_RETRIES = 5
+RATE_LIMIT_DEFAULT_WAIT = 30
+RATE_LIMIT_MAX_WAIT = 120
 
 # Quanti SKU per chiamata di VERIFICA offerte (GET offer-information): gli SKU
 # viaggiano in query string, quindi il blocco è più piccolo dell'invio.
@@ -64,20 +82,104 @@ PAYLOAD_LOG_LIMIT = 8000
 # Tipo documento accettato da ManoMano per il caricamento fattura.
 MANOMANO_DOCUMENT_TYPE_INVOICE = "INVOICE"
 
-# Lista corrieri ammessi da ManoMano (codice → etichetta). DA CONFERMARE con la
-# lista ufficiale ManoMano; valori iniziali plausibili + "other" (che su ManoMano
-# consente carrier_name + tracking_url liberi). Esposta come carrier_codes per il
-# Selection dinamico di centrivo.carrier.map.
+# Corrieri ammessi da ManoMano — NOMI UFFICIALI dalla loro "Lista dei corrieri"
+# (PDF fornito da Angelo, 2026-07-28). Il valore da inviare nel campo `carrier`
+# della spedizione è il NOME COSÌ COM'È, non un codice: l'esempio ufficiale
+# dell'API porta infatti `"carrier": "UPS"` (maiuscolo), coerente con la lista.
+#
+# Attenzione a due punti su cui la nostra lista precedente sbagliava, e che
+# avrebbero fatto fallire il push alla prima spedizione vera:
+#   - le sigle vanno MAIUSCOLE (BRT, GLS, DHL, UPS, TNT, DPD), non minuscole;
+#   - "Poste Italiane" è il nome per esteso: `poste` non esiste.
+# Rimosso anche il valore generico "other": nella lista ufficiale NON c'è, e
+# mandarlo significherebbe farsi rifiutare la spedizione. Per un corriere non in
+# elenco si scrive a Transport@manomano.com (indicato nel documento).
+#
+# La lista è per NOME, non filtrata per paese: il documento indica anche i paesi
+# di origine serviti da ciascun corriere, ma quel dato riguarda la scelta
+# commerciale del venditore, non la validità del valore.
+# Esposta come carrier_codes per il Selection dinamico di centrivo.carrier.map.
 MANOMANO_CARRIERS = [
-    ("dhl", "DHL"),
-    ("gls", "GLS"),
-    ("brt", "BRT"),
-    ("ups", "UPS"),
-    ("tnt", "TNT"),
-    ("fedex", "FedEx"),
-    ("dpd", "DPD"),
-    ("poste", "Poste Italiane"),
-    ("other", "Altro (carrier_name + tracking_url liberi)"),
+    ("Ader", "Ader"),
+    ("Amazon Logistics", "Amazon Logistics"),
+    ("APC Overnight", "APC Overnight"),
+    ("Asendia", "Asendia"),
+    ("Austrian Post", "Austrian Post"),
+    ("Baudoin", "Baudoin"),
+    ("Bpost", "Bpost"),
+    ("BRT", "BRT"),
+    ("CBL Logistica", "CBL Logistica"),
+    ("CHRONO 13", "CHRONO 13"),
+    ("Chronopost", "Chronopost"),
+    ("Colis Privé", "Colis Privé"),
+    ("Colissimo", "Colissimo"),
+    ("Correos", "Correos"),
+    ("Correos Express", "Correos Express"),
+    ("CTT Express", "CTT Express"),
+    ("Dachser", "Dachser"),
+    ("DB Schenker", "DB Schenker"),
+    ("Deutsche Post", "Deutsche Post"),
+    ("DHL", "DHL"),
+    ("DHL Freight", "DHL Freight"),
+    ("DHL Parcel", "DHL Parcel"),
+    ("DPD", "DPD"),
+    ("DSV", "DSV"),
+    ("Ducros", "Ducros"),
+    ("DUSCHEXPRESS", "DUSCHEXPRESS"),
+    ("DX", "DX"),
+    ("Envialia", "Envialia"),
+    ("Evri", "Evri"),
+    ("Fedex", "Fedex"),
+    ("Fercam", "Fercam"),
+    ("France Express", "France Express"),
+    ("Furdeco", "Furdeco"),
+    ("Gebruder Weiss", "Gebruder Weiss"),
+    ("Gefco", "Gefco"),
+    ("Gel", "Gel"),
+    ("Geodis", "Geodis"),
+    ("GLS", "GLS"),
+    ("Heppner", "Heppner"),
+    ("Hermes", "Hermes"),
+    ("Kuehne Nagel", "Kuehne Nagel"),
+    ("La Poste Suivi", "La Poste Suivi"),
+    ("Liccardi", "Liccardi"),
+    ("Marmeth", "Marmeth"),
+    ("Mazet", "Mazet"),
+    ("Mondial Relay", "Mondial Relay"),
+    ("MRW", "MRW"),
+    ("NACEX", "NACEX"),
+    ("OnTime", "OnTime"),
+    ("Palletways", "Palletways"),
+    ("Pallex", "Pallex"),
+    ("ParcelForce", "ParcelForce"),
+    ("Post NL", "Post NL"),
+    ("Poste Italiane", "Poste Italiane"),
+    ("Prévoté", "Prévoté"),
+    ("Raben", "Raben"),
+    ("Relais Colis", "Relais Colis"),
+    ("Royal Mail", "Royal Mail"),
+    ("Sanidis", "Sanidis"),
+    ("SDA", "SDA"),
+    ("Sending", "Sending"),
+    ("Seur", "Seur"),
+    ("Spring", "Spring"),
+    ("TDN", "TDN"),
+    ("TIPSA", "TIPSA"),
+    ("TNT", "TNT"),
+    ("Transaher", "Transaher"),
+    ("Tred Chariot", "Tred Chariot"),
+    ("TRS", "TRS"),
+    ("Trusk", "Trusk"),
+    ("UDEL", "UDEL"),
+    ("UK Mail", "UK Mail"),
+    ("UPS", "UPS"),
+    ("viaxpress", "viaxpress"),
+    ("VIR", "VIR"),
+    ("Whistl", "Whistl"),
+    ("XDP", "XDP"),
+    ("XPO", "XPO"),
+    ("Yodel", "Yodel"),
+    ("Zeleris", "Zeleris"),
 ]
 
 # Mappa degli stati ordine ManoMano (MAIUSCOLO, rif. docs/manomano-api-reference.md
@@ -245,7 +347,12 @@ class ManoManoConnector(MarketplaceConnector):
         total_sent = 0
         errors = 0
         for contract in contracts:
-            for batch in self._chunks(items, OFFERS_BATCH_SIZE):
+            for index, batch in enumerate(self._chunks(items, OFFERS_BATCH_SIZE)):
+                # Pausa PRIMA di ogni blocco tranne il primo: con blocchi da 20
+                # le chiamate sono tante e ravvicinate, e Cloudflare blocca le
+                # raffiche. Meglio un invio più lento che un invio respinto.
+                if index and OFFERS_BATCH_PAUSE:
+                    time.sleep(OFFERS_BATCH_PAUSE)
                 if self._send_offers_batch(batch, contract):
                     total_sent += len(batch)
                 else:
@@ -336,6 +443,50 @@ class ManoManoConnector(MarketplaceConnector):
         }
         return item
 
+    @staticmethod
+    def _retry_after_seconds(response, previous=None):
+        """Quanti secondi aspettare dopo un 429, dalla risposta stessa.
+
+        Cloudflare mette `retry_after` (secondi) nel corpo JSON. Al primo 429 si
+        usa quel valore; dai successivi si raddoppia l'attesa precedente, come
+        raccomandano loro. Difensivo: valore assente, non numerico o negativo →
+        default; attesa comunque limitata a RATE_LIMIT_MAX_WAIT, perché un
+        `retry_after` sballato terrebbe fermo un worker Odoo.
+        """
+        if previous is not None:
+            return min(previous * 2, RATE_LIMIT_MAX_WAIT)
+        body = response.json if isinstance(response.json, dict) else {}
+        wait = body.get("retry_after")
+        if isinstance(wait, bool) or not isinstance(wait, (int, float)):
+            wait = RATE_LIMIT_DEFAULT_WAIT
+        if wait <= 0:
+            wait = RATE_LIMIT_DEFAULT_WAIT
+        return min(float(wait), RATE_LIMIT_MAX_WAIT)
+
+    def _request_rate_limited(self, method, path, **kwargs):
+        """transport.request che RISPETTA il 429 di Cloudflare.
+
+        `integrations_core` ritenta solo i 5xx (RETRYABLE_STATUS) e non si tocca:
+        serve anche BricoBravo. L'attesa sul 429 vive quindi qui, sul solo
+        ManoMano. Esaurititi i tentativi si ritorna comunque l'ultima risposta:
+        è il chiamante che la logga come errore, con payload e corpo.
+        """
+        wait = None
+        response = None
+        for attempt in range(1, RATE_LIMIT_MAX_RETRIES + 1):
+            response = self.transport.request(method, path, **kwargs)
+            if response.status_code != RATE_LIMIT_STATUS:
+                return response
+            if attempt == RATE_LIMIT_MAX_RETRIES:
+                break
+            wait = self._retry_after_seconds(response, wait)
+            _logger.warning(
+                "ManoMano: rate limit (429) su %s %s, attesa %ss "
+                "(tentativo %s/%s).",
+                method, path, wait, attempt, RATE_LIMIT_MAX_RETRIES)
+            time.sleep(wait)
+        return response
+
     def _send_offers_batch(self, items, contract):
         """PUT /api/v1/offers?seller_contract_id=<contract>, body = array offerte.
 
@@ -347,7 +498,7 @@ class ManoManoConnector(MarketplaceConnector):
         """
         payload = self._dump(items)
         try:
-            response = self.transport.request(
+            response = self._request_rate_limited(
                 "PUT", "/api/v1/offers?seller_contract_id=%s" % contract,
                 json=items)
         except TransportError as exc:
@@ -453,14 +604,17 @@ class ManoManoConnector(MarketplaceConnector):
             return 0
 
         for contract in contracts:
-            for batch in self._chunks(skus, OFFER_INFO_BATCH_SIZE):
+            for index, batch in enumerate(
+                    self._chunks(skus, OFFER_INFO_BATCH_SIZE)):
+                if index and OFFERS_BATCH_PAUSE:
+                    time.sleep(OFFERS_BATCH_PAUSE)
                 self._check_offers_batch(batch, contract)
         return len(skus)
 
     def _check_offers_batch(self, skus, contract):
         """Una chiamata di verifica (sola lettura) + log dell'esito grezzo."""
         try:
-            response = self.transport.request(
+            response = self._request_rate_limited(
                 "GET", "/api/v1/offer-information/offers",
                 params={"seller_contract_id": contract,
                         "skus": ",".join(skus)})

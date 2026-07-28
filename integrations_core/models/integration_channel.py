@@ -185,8 +185,30 @@ class IntegrationChannel(models.Model):
              "un'imposta cliente percentuale.")
 
     # NB: le immagini del feed catalogo NON usano un campo URL esterno. Gli URL
-    # pubblici sono COSTRUITI dai blob nativi Odoo (image_1920) su web.base.url
-    # (vedi connettore BricoBravo, _image_urls). Nessun campo di mapping immagini.
+    # pubblici sono COSTRUITI dai blob nativi Odoo su web.base.url (vedi
+    # connettore BricoBravo, _image_urls). Nessun campo di mapping immagini.
+
+    # Risoluzione servita dalla rotta immagini. Odoo tiene GIÀ pronte le versioni
+    # ridimensionate (image.mixin): servirne una più piccola non costa nulla in
+    # CPU e alleggerisce di molto il trasferimento.
+    #
+    # Perché è una scelta per canale e non un valore fisso: il 2026-07-28
+    # ManoMano ha scaricato 23.101 immagini dalla produzione e l'originale a
+    # 1920px ha prodotto timeout e "Server limit reached"; dopo qualche
+    # fallimento di fila il loro scaricatore ha interrotto TUTTO, lasciando
+    # 5.247 schede senza immagine. Serviva poter alleggerire ManoMano SENZA
+    # cambiare BricoBravo, che è vivo in produzione e funziona.
+    feed_image_resolution = fields.Selection(
+        [("1920", "Originale (1920 px) — la più pesante"),
+         ("1024", "Media (1024 px) — consigliata"),
+         ("512", "Piccola (512 px)")],
+        string="Risoluzione immagini del feed", default="1024", required=True,
+        help="Dimensione dell'immagine servita ai marketplace sulla rotta "
+             "pubblica. Odoo tiene già pronte tutte queste versioni, quindi "
+             "scegliere la più piccola non rallenta nulla: riduce solo il peso "
+             "dello scaricamento. 1024 px è ampiamente sufficiente per una "
+             "scheda di marketplace. Alzare a 1920 solo se il marketplace "
+             "lamenta immagini di qualità insufficiente.")
 
     catalog_feed_content = fields.Text(
         string="Feed catalogo (CSV)", copy=False, readonly=True)

@@ -23,6 +23,7 @@ restituiamo i byte, ma SOLO per i prodotti esportabili su quel canale (criterio
 tag + company), così il token non diventa un modo per leggere immagini arbitrarie.
 """
 import base64
+import hashlib
 import hmac
 import logging
 
@@ -152,18 +153,63 @@ class IntegrationsFeedController(http.Controller):
         if not record or not self._is_exportable(channel, template):
             return self._not_found()
 
-        image_data = record.image_1920
+        # --- Cache: prima di leggere il blob, si prova a rispondere 304 -------
+        # Gli scaricatori dei marketplace ripassano sulle STESSE immagini a ogni
+        # invio del feed. Con un validatore possiamo dire "non è cambiata" senza
+        # leggere né trasferire i byte: è il risparmio più grande, e si paga solo
+        # una lettura di write_date.
+        etag = self._image_etag(record, template, channel.feed_image_resolution)
+        if etag and request.httprequest.headers.get("If-None-Match") == etag:
+            return request.make_response("", status=304, headers=[("ETag", etag)])
+
+        image_data = self._image_blob(record, channel.feed_image_resolution)
         if not image_data:
             return self._not_found()
 
         raw = base64.b64decode(image_data)
         mimetype = guess_mimetype(raw) or "image/jpeg"
-        return request.make_response(
-            raw,
-            headers=[
-                ("Content-Type", mimetype),
-                ("Content-Length", str(len(raw))),
-            ])
+        headers = [
+            ("Content-Type", mimetype),
+            ("Content-Length", str(len(raw))),
+            # Immagine di prodotto: cambia di rado. Un giorno di validità evita
+            # gli scaricamenti ripetuti senza congelare un eventuale aggiornamento.
+            ("Cache-Control", "public, max-age=86400"),
+        ]
+        if etag:
+            headers.append(("ETag", etag))
+        return request.make_response(raw, headers=headers)
+
+    @staticmethod
+    def _image_blob(record, resolution):
+        """Il blob della risoluzione scelta sul canale, con ripiego sull'originale.
+
+        Odoo (image.mixin) tiene già pronte le versioni ridimensionate: leggere
+        la 1024 invece della 1920 non costa CPU e alleggerisce il trasferimento.
+        Se la versione richiesta mancasse (dato anomalo), si ripiega sempre
+        sull'originale: meglio un'immagine pesante che nessuna immagine.
+        """
+        field = "image_%s" % (resolution or "1920")
+        return getattr(record, field, False) or record.image_1920
+
+    @staticmethod
+    def _image_etag(record, template, resolution):
+        """Validatore di cache dell'immagine, senza leggerne i byte.
+
+        Composto da modello, id, risoluzione e data di ultima modifica. Si include
+        ANCHE la write_date del template perché su product.product l'immagine può
+        arrivare dal template: guardando solo la variante, una foto sostituita sul
+        template non cambierebbe il validatore e i marketplace continuerebbero a
+        servirsi la vecchia. Se le date mancano si ritorna None: niente ETag,
+        nessuna cache — mai una cache sbagliata.
+        """
+        stamps = [record.write_date, template.write_date if template else None]
+        if not any(stamps):
+            return None
+        material = "|".join([
+            record._name, str(record.id), str(resolution or "1920"),
+            *[s.isoformat() if s else "" for s in stamps],
+        ])
+        return '"%s"' % hashlib.sha1(material.encode("utf-8")).hexdigest()
 
     @http.route("/integrations/feed/image/<int:channel_id>/<string:source>/<int:res_id>",
                 type="http", auth="public", csrf=False, methods=["GET"])
