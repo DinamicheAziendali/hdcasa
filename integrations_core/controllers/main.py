@@ -26,6 +26,7 @@ import base64
 import hashlib
 import hmac
 import logging
+import time
 
 from odoo import http
 from odoo.http import request
@@ -127,6 +128,71 @@ class IntegrationsFeedController(http.Controller):
             return False
         return True
 
+    # --- Percorso CALDO: configurazione di canale con cache a TTL breve ------
+    #
+    # Misurato sui log di Odoo.sh il 2026-07-28: ManoMano fa una HEAD **e** una
+    # GET per OGNI foto, e ciascuna richiesta costava 14 interrogazioni al
+    # database. Su un'importazione dell'intero catalogo (23.105 immagini) sono
+    # 46.210 richieste e circa 650.000 interrogazioni — ed è questo, non il peso
+    # delle foto, ad aver fatto arrendere il loro scaricatore.
+    #
+    # Buona parte di quelle interrogazioni rileggeva ogni volta le STESSE cose:
+    # token del canale, tag di esportazione, company, risoluzione. Dati che
+    # cambiano una volta al mese. Qui se ne tiene una copia per pochi secondi.
+    #
+    # TTL breve e voluto: dopo un cambio di token (o dei tag di export) la
+    # modifica ha effetto entro _CHANNEL_CACHE_TTL secondi, non oltre. La cache
+    # è per-processo: ogni worker ha la sua, e si svuota al riavvio.
+    _CHANNEL_CACHE = {}
+    _CHANNEL_CACHE_TTL = 60
+
+    @classmethod
+    def _invalidate_channel_cache(cls):
+        """Svuota la cache (utile nei test e in un eventuale hook di scrittura)."""
+        cls._CHANNEL_CACHE.clear()
+
+    def _channel_image_config(self, channel_id):
+        """Copia dei dati di canale che servono alla rotta immagini.
+
+        Ritorna sempre un dizionario (mai un recordset): così il percorso caldo
+        non tocca l'ORM del canale. `token` a None significa canale inesistente
+        → il chiamante risponde 403 come prima, senza distinguere i due casi.
+        """
+        key = (request.env.cr.dbname, channel_id)
+        now = time.time()
+        cached = self._CHANNEL_CACHE.get(key)
+        if cached and cached["expires"] > now:
+            return cached
+
+        channel = request.env["centrivo.channel"].sudo().browse(channel_id).exists()
+        config = {
+            "expires": now + self._CHANNEL_CACHE_TTL,
+            "token": channel.export_token if channel else None,
+            "tag_ids": frozenset(channel.export_product_tag_ids.ids) if channel
+                       else frozenset(),
+            "company_id": channel.company_id.id if channel else False,
+            "resolution": channel.feed_image_resolution if channel else "1920",
+        }
+        self._CHANNEL_CACHE[key] = config
+        return config
+
+    @staticmethod
+    def _is_exportable_config(config, template):
+        """Come _is_exportable, ma sulla copia in cache invece che sul recordset.
+
+        Stesso identico criterio (tag di export + company): la sicurezza della
+        rotta non cambia, cambia solo da dove arrivano i dati del canale.
+        """
+        if not template:
+            return False
+        tags = config["tag_ids"]
+        if not tags or not (set(template.product_tag_ids.ids) & tags):
+            return False
+        company = template.company_id
+        if company and company.id != config["company_id"]:
+            return False
+        return True
+
     def _serve_image(self, channel_id, token, source, res_id):
         """Serve i BYTE dell'immagine di un prodotto esportabile (no /web/image nativo).
 
@@ -134,8 +200,10 @@ class IntegrationsFeedController(http.Controller):
         del Community puro), ma SOLO per prodotti esportabili sul canale. Immagine
         assente/non esportabile → 404 (mai il placeholder). Token errato → 403.
         """
-        channel = self._channel_if_token_ok(channel_id, token)
-        if not channel:
+        config = self._channel_image_config(channel_id)
+        expected = config["token"]
+        if not expected or not token or not hmac.compare_digest(str(token),
+                                                                str(expected)):
             return self._forbidden()
 
         env = request.env
@@ -150,19 +218,32 @@ class IntegrationsFeedController(http.Controller):
         else:
             return self._not_found()
 
-        if not record or not self._is_exportable(channel, template):
+        if not record or not self._is_exportable_config(config, template):
             return self._not_found()
+
+        resolution = config["resolution"]
 
         # --- Cache: prima di leggere il blob, si prova a rispondere 304 -------
         # Gli scaricatori dei marketplace ripassano sulle STESSE immagini a ogni
         # invio del feed. Con un validatore possiamo dire "non è cambiata" senza
         # leggere né trasferire i byte: è il risparmio più grande, e si paga solo
         # una lettura di write_date.
-        etag = self._image_etag(record, template, channel.feed_image_resolution)
+        # (Misurato: ManoMano NON manda If-None-Match — riscarica tutto. Restiamo
+        # corretti comunque, per gli scaricatori che invece la usano.)
+        etag = self._image_etag(record, template, resolution)
         if etag and request.httprequest.headers.get("If-None-Match") == etag:
             return request.make_response("", status=304, headers=[("ETag", etag)])
 
-        image_data = self._image_blob(record, channel.feed_image_resolution)
+        # --- HEAD: si risponde senza LEGGERE l'immagine ------------------------
+        # Metà delle richieste sono HEAD ("c'è?"), e finora costavano quanto una
+        # GET: il gestore leggeva e decodificava la foto, e poi il corpo veniva
+        # buttato via perché a una HEAD non spetta. Qui si risponde con le sole
+        # intestazioni, prese dai METADATI dell'allegato (una lettura leggera,
+        # mai i byte).
+        if request.httprequest.method == "HEAD":
+            return self._head_response(record, resolution, etag)
+
+        image_data = self._image_blob(record, resolution)
         if not image_data:
             return self._not_found()
 
@@ -178,6 +259,78 @@ class IntegrationsFeedController(http.Controller):
         if etag:
             headers.append(("ETag", etag))
         return request.make_response(raw, headers=headers)
+
+    def _head_response(self, record, resolution, etag):
+        """Risposta a una HEAD: sole intestazioni, senza leggere i byte.
+
+        Tipo e dimensione arrivano dai metadati dell'allegato che Odoo usa per
+        conservare le immagini (`ir.attachment.mimetype` / `file_size`): una
+        riga leggera, non il blob. Se l'allegato non si trova — per esempio
+        quando la variante eredita la foto dal template — si ripiega leggendo il
+        campo, ma **senza decodificarlo**: la dimensione si ricava dalla
+        lunghezza del base64.
+
+        Se non si riesce a determinare la dimensione si omette Content-Length:
+        su una HEAD è legittimo, ed è meglio di un valore sbagliato.
+        """
+        mimetype, size = self._image_meta(record, resolution)
+        if mimetype is None:
+            image_data = self._image_blob(record, resolution)
+            if not image_data:
+                return self._not_found()
+            mimetype, size = "image/jpeg", self._b64_decoded_size(image_data)
+
+        headers = [
+            ("Content-Type", mimetype or "image/jpeg"),
+            ("Cache-Control", "public, max-age=86400"),
+        ]
+        if etag:
+            headers.append(("ETag", etag))
+        response = request.make_response("", headers=headers)
+        if size:
+            # Werkzeug ricalcolerebbe Content-Length sul corpo vuoto (0), che su
+            # una HEAD farebbe credere l'immagine vuota: qui si disattiva quel
+            # ricalcolo e si dichiara la dimensione che avrebbe la GET.
+            response.automatically_set_content_length = False
+            response.headers["Content-Length"] = str(size)
+        return response
+
+    @staticmethod
+    def _image_meta(record, resolution):
+        """(mimetype, dimensione) dai metadati dell'allegato, SENZA leggere i byte.
+
+        Le immagini di image.mixin sono conservate come allegati: interrogando
+        ir.attachment per (modello, campo, id) si ottengono tipo e dimensione
+        senza toccare il contenuto. (None, None) se l'allegato non c'è.
+        """
+        field = "image_%s" % (resolution or "1920")
+        try:
+            attachment = record.env["ir.attachment"].sudo().search_read(
+                [("res_model", "=", record._name),
+                 ("res_field", "=", field),
+                 ("res_id", "=", record.id)],
+                ["mimetype", "file_size"], limit=1)
+        except Exception:  # noqa: BLE001 - la HEAD non deve mai fallire per questo
+            return None, None
+        if not attachment:
+            return None, None
+        return (attachment[0].get("mimetype") or "image/jpeg",
+                attachment[0].get("file_size") or None)
+
+    @staticmethod
+    def _b64_decoded_size(data):
+        """Dimensione dei byte decodificati, ricavata dalla lunghezza del base64.
+
+        Aritmetica pura: evita di decodificare l'immagine solo per sapere quanto
+        pesa. 4 caratteri base64 = 3 byte, meno il riempimento finale ('=').
+        """
+        if not data:
+            return 0
+        if isinstance(data, str):
+            data = data.encode("ascii", "ignore")
+        data = data.strip()
+        padding = data.count(b"=")
+        return max(0, (len(data) // 4) * 3 - padding)
 
     @staticmethod
     def _image_blob(record, resolution):

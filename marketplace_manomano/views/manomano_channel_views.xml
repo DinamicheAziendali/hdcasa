@@ -29,6 +29,7 @@
                         </group>
                         <group string="Spedizione">
                             <field name="manomano_carrier_grid_name"/>
+                            <field name="manomano_default_weight"/>
                         </group>
                         <group string="Tempi di consegna">
                             <field name="manomano_transit_days_min"/>
@@ -73,6 +74,8 @@
                                    invisible="source_type != 'field'"/>
                             <field name="attribute_id"
                                    invisible="source_type != 'attribute'"/>
+                            <field name="supplier_partner_id"
+                                   invisible="source_type != 'supplier_code'"/>
                             <field name="fixed_value"
                                    invisible="source_type != 'fixed'"/>
                             <field name="image_index"

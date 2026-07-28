@@ -37,11 +37,19 @@ class ManoManoFeedMap(models.Model):
         selection=[
             ("field", "Campo prodotto"),
             ("attribute", "Attributo prodotto"),
+            ("supplier_code", "Codice fornitore (Acquisto → Fornitori)"),
             ("fixed", "Valore fisso"),
             ("main_image", "Immagine principale"),
             ("gallery_image", "Immagine galleria (n)"),
         ],
         string="Fonte", required=True, default="field")
+    supplier_partner_id = fields.Many2one(
+        "res.partner", string="Fornitore (facoltativo)", ondelete="set null",
+        domain="[('supplier_rank', '>', 0)]",
+        help="Solo per la fonte 'Codice fornitore'. Se indicato, si prende il "
+             "codice di QUESTO fornitore; se lasciato vuoto si prende quello "
+             "del fornitore preferito (il primo nell'ordine di Odoo) fra "
+             "quelli che hanno un codice compilato.")
     source_field_id = fields.Many2one(
         "ir.model.fields", string="Campo Odoo",
         domain=_PRODUCT_FIELD_DOMAIN, ondelete="cascade")

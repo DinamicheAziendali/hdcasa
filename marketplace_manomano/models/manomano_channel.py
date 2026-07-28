@@ -55,6 +55,19 @@ class CentrivoChannel(models.Model):
              "intervallo, non un singolo numero, altrimenti rifiuta "
              "l'offerta (non riesce a calcolare una promessa di consegna).")
 
+    manomano_default_weight = fields.Float(
+        string="Peso di ripiego (kg)", default=0.0,
+        help="Peso usato SOLO per i prodotti che in Odoo non ne hanno uno. "
+             "ManoMano rifiuta le offerte con peso a zero "
+             "(ERR_PIM_OFFER_API_REQUEST_VALIDATION: 'display_weight must be "
+             "greater than 0').\n\n"
+             "Lasciato a 0 (impostazione predefinita) i prodotti senza peso "
+             "vengono SALTATI e contati nel log: è la scelta prudente, perché "
+             "il peso determina il costo di spedizione calcolato da ManoMano e "
+             "un valore inventato lo falserebbe. Impostare un valore solo se si "
+             "preferisce pubblicare comunque quei prodotti, sapendo che la "
+             "spedizione sarà calcolata su un peso approssimato.")
+
     @api.constrains("manomano_transit_days_min", "manomano_transit_days_max")
     def _check_manomano_transit_days(self):
         """Il vincolo vale SOLO sui canali ManoMano.

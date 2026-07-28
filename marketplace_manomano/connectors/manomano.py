@@ -334,11 +334,24 @@ class ManoManoConnector(MarketplaceConnector):
         products = Product.search(
             [("product_tmpl_id.product_tag_ids", "in", tags.ids)], order="id")
 
-        rows = self._offer_rows(products, channel)
+        rows, skipped_no_weight = self._offer_rows(products, channel)
+        # Gli scarti per peso mancante vanno detti QUI, nel log che l'utente
+        # legge: nel log del server sarebbero invisibili, e il prodotto
+        # sparirebbe dal marketplace senza che nessuno sappia perché.
+        nota_peso = ""
+        if skipped_no_weight:
+            esempi = ", ".join(skipped_no_weight[:10])
+            if len(skipped_no_weight) > 10:
+                esempi += ", …"
+            nota_peso = (
+                " %s prodotti SALTATI perché senza peso in Odoo (ManoMano "
+                "rifiuta le offerte con peso a zero): %s. Compilare il peso, "
+                "oppure impostare un peso di ripiego sul canale." % (
+                    len(skipped_no_weight), esempi))
         if not rows:
             self._log_offers("skip",
                              "Nessuna offerta valida da inviare (prodotti senza "
-                             "default_code o prezzo).")
+                             "default_code, prezzo o peso)." + nota_peso)
             return 0
 
         items = [self._build_offer_item(r) for r in rows]
@@ -346,6 +359,7 @@ class ManoManoConnector(MarketplaceConnector):
         # --- Invio a blocchi, per contract ---------------------------------
         total_sent = 0
         errors = 0
+        all_codes = []
         for contract in contracts:
             for index, batch in enumerate(self._chunks(items, OFFERS_BATCH_SIZE)):
                 # Pausa PRIMA di ogni blocco tranne il primo: con blocchi da 20
@@ -353,16 +367,26 @@ class ManoManoConnector(MarketplaceConnector):
                 # raffiche. Meglio un invio più lento che un invio respinto.
                 if index and OFFERS_BATCH_PAUSE:
                     time.sleep(OFFERS_BATCH_PAUSE)
-                if self._send_offers_batch(batch, contract):
-                    total_sent += len(batch)
-                else:
+                accepted, codes = self._send_offers_batch(batch, contract)
+                total_sent += accepted
+                all_codes.extend(codes)
+                if accepted < len(batch):
                     errors += 1
+
+        # Riepilogo dei motivi: con migliaia di offerte l'elenco per SKU è
+        # illeggibile, e senza questa riga non si capisce se il problema sia
+        # nostro o sia il catalogo ManoMano che deve ancora finire di lavorare.
+        nota_rifiuti = ""
+        if all_codes:
+            nota_rifiuti = " Rifiutate %s: %s." % (
+                len(all_codes), self._summarize_codes(all_codes))
 
         self._log_offers(
             "success" if errors == 0 else "error",
-            "Offerte ManoMano: %s righe valide, inviate %s (contract: %s), "
-            "blocchi in errore %s." % (
-                len(items), total_sent, ", ".join(contracts), errors))
+            "Offerte ManoMano: %s righe valide, ACCETTATE %s (contract: %s), "
+            "blocchi con rifiuti %s.%s%s" % (
+                len(items), total_sent, ", ".join(contracts), errors,
+                nota_rifiuti, nota_peso))
         return total_sent
 
     def _offer_rows(self, products, channel):
@@ -386,6 +410,7 @@ class ManoManoConnector(MarketplaceConnector):
         viene dal canale (precondizione verificata in push_offers).
         """
         rows = []
+        skipped = []
         for product in products:
             sku = (product.default_code or "").strip()
             if not sku:
@@ -396,6 +421,24 @@ class ManoManoConnector(MarketplaceConnector):
             if price is None:
                 _logger.info("ManoMano: prodotto %s (%s) senza prezzo, saltato.",
                              product.display_name, sku)
+                continue
+            # PESO: ManoMano rifiuta l'offerta se display_weight non è > 0
+            # (ERR_PIM_OFFER_API_REQUEST_VALIDATION). Prima mandavamo 0.0 e il
+            # rifiuto arrivava da loro, per ogni prodotto senza peso in Odoo.
+            # Ora si salta prima, con il conto nel log: il peso determina il
+            # costo di spedizione che ManoMano calcola, quindi inventarne uno
+            # falserebbe la spedizione. Chi preferisce pubblicare comunque
+            # imposta un peso di ripiego sul canale (default 0 = salta).
+            weight = float(product.weight or 0.0)
+            if weight <= 0:
+                weight = float(channel.manomano_default_weight or 0.0)
+            if weight <= 0:
+                skipped.append(sku)
+                _logger.info(
+                    "ManoMano: prodotto %s (%s) senza peso, saltato "
+                    "(ManoMano rifiuta display_weight = 0; per pubblicarlo "
+                    "comunque impostare il peso di ripiego sul canale).",
+                    product.display_name, sku)
                 continue
             qty = self._available_quantity(product, channel)
             sale_delay = int(product.sale_delay or 0)
@@ -408,12 +451,12 @@ class ManoManoConnector(MarketplaceConnector):
                 "sku": sku,
                 "price": round(float(price), 2),
                 "stock": int(round(qty)),
-                "weight": product.weight or 0.0,
+                "weight": weight,
                 "shipping_time_min": shipping_time_min,
                 "shipping_time_max": shipping_time_max,
                 "carrier_grid_name": channel.manomano_carrier_grid_name,
             })
-        return rows
+        return rows, skipped
 
     def _build_offer_item(self, row):
         """Item offerta per PUT /api/v1/offers (rif. docs/manomano-api-reference.md).
@@ -490,10 +533,15 @@ class ManoManoConnector(MarketplaceConnector):
     def _send_offers_batch(self, items, contract):
         """PUT /api/v1/offers?seller_contract_id=<contract>, body = array offerte.
 
-        Esito per-SKU in content[].response.status. Ritorna True se la chiamata è
-        andata (2xx). In OGNI caso di rifiuto (HTTP o per-SKU) si logga anche il
-        PAYLOAD inviato: ManoMano può rispondere "400 Bad Request" senza dire
-        quale campo non le piace, quindi l'unico modo per capire è vedere cosa
+        Ritorna **(accettate, codici_di_rifiuto)**, non più un sì/no: prima si
+        contava l'INTERO blocco come inviato appena la chiamata tornava 2xx,
+        anche quando ManoMano ne aveva rifiutati 16 su 20 — il riepilogo finale
+        dichiarava quindi più offerte a scaffale di quante ce ne fossero
+        davvero.
+
+        In OGNI caso di rifiuto (HTTP o per-SKU) si logga anche il PAYLOAD
+        inviato: ManoMano può rispondere "400 Bad Request" senza dire quale
+        campo non le piace, quindi l'unico modo per capire è vedere cosa
         abbiamo spedito.
         """
         payload = self._dump(items)
@@ -506,28 +554,52 @@ class ManoManoConnector(MarketplaceConnector):
                              "Invio offerte (contract %s) fallito (rete): %s"
                              % (contract, exc),
                              payload=payload)
-            return False
+            return 0, ["ERRORE_DI_RETE"] * len(items)
+
+        rejected = self._rejected_skus(response)
+        codes = self._rejection_codes(response)
+
         if not response.ok:
+            # Il corpo del 400 ha la stessa struttura per-SKU del 2xx: se si
+            # riesce a leggerlo si scrive l'elenco vero, altrimenti (e solo
+            # allora) si ripiega sul corpo grezzo troncato.
+            if rejected:
+                dettaglio = "%s SKU rifiutati (%s) — %s" % (
+                    len(rejected), self._summarize_codes(codes),
+                    "; ".join(rejected))
+            else:
+                dettaglio = (response.text or "")[:1000]
             self._log_offers("error",
                              "Invio offerte (contract %s): HTTP %s — %s"
-                             % (contract, response.status_code,
-                                (response.text or "")[:1000]),
+                             % (contract, response.status_code, dettaglio),
                              payload=payload)
-            return False
-        rejected = self._rejected_skus(response)
+            # Chiamata respinta: non si dà per buona NESSUNA offerta del blocco.
+            # Meglio sottostimare che dichiarare a scaffale roba che non c'è.
+            return 0, (codes or ["HTTP_%s" % response.status_code] * len(items))
+
         if rejected:
             # Chiamata 2xx ma singoli SKU rifiutati: senza questo log l'esito
             # complessivo direbbe "tutto ok" nascondendo il rifiuto.
             self._log_offers("error",
                              "Invio offerte (contract %s): chiamata accettata "
-                             "ma %s SKU rifiutati da ManoMano — %s"
-                             % (contract, len(rejected), "; ".join(rejected)),
+                             "ma %s SKU rifiutati da ManoMano (%s) — %s"
+                             % (contract, len(rejected),
+                                self._summarize_codes(codes),
+                                "; ".join(rejected)),
                              payload=payload)
-        return True
+        return max(0, len(items) - len(rejected)), codes
 
     @staticmethod
     def _rejected_skus(response):
-        """SKU rifiutati dentro una risposta 2xx (content[].response.status).
+        """SKU rifiutati dentro la risposta, QUALUNQUE sia lo stato HTTP.
+
+        ManoMano usa DUE forme per lo stesso esito, scoperte sul reale:
+          - alcuni SKU rifiutati su molti  → HTTP 2xx, i rifiuti stanno dentro;
+          - TUTTI gli SKU del blocco rifiutati → HTTP 400, e il corpo ha la
+            stessa identica struttura `content[]`.
+        Prima leggevamo il dettaglio solo nel primo caso: nel secondo finiva nel
+        log un troncone di JSON grezzo tagliato a metà parola. Stessa
+        informazione, illeggibile.
 
         Difensivo: se la struttura non è quella attesa ritorna lista vuota (la
         diagnosi si fa comunque sul corpo grezzo loggato).
@@ -551,6 +623,41 @@ class ManoManoConnector(MarketplaceConnector):
                                              default=str)
             rejected.append(line.strip())
         return rejected
+
+    @staticmethod
+    def _rejection_codes(response):
+        """I soli CODICI di rifiuto (es. NO_CONTENT_APPROVED), uno per SKU.
+
+        Servono per il riepilogo: con migliaia di offerte l'elenco per SKU è
+        illeggibile, mentre "1.200 NO_CONTENT_APPROVED, 34 NO_CONTENT_LOCALISED"
+        dice in una riga se il problema è nostro o è il loro catalogo che deve
+        ancora finire di lavorare.
+        """
+        body = response.json if isinstance(response.json, dict) else {}
+        codes = []
+        for entry in body.get("content") or []:
+            if not isinstance(entry, dict):
+                continue
+            status = (entry.get("response") or {}).get("status")
+            if status is None or (isinstance(status, int)
+                                  and 200 <= status < 300):
+                continue
+            errori = entry.get("errors") or []
+            trovati = [e.get("code") for e in errori
+                       if isinstance(e, dict) and e.get("code")]
+            codes.extend(trovati or ["SENZA_CODICE"])
+        return codes
+
+    @staticmethod
+    def _summarize_codes(codes):
+        """'NO_CONTENT_APPROVED: 1200, NO_CONTENT_LOCALISED: 34' (più frequenti prima)."""
+        if not codes:
+            return ""
+        conteggio = {}
+        for code in codes:
+            conteggio[code] = conteggio.get(code, 0) + 1
+        ordinati = sorted(conteggio.items(), key=lambda kv: (-kv[1], kv[0]))
+        return ", ".join("%s: %s" % (code, n) for code, n in ordinati)
 
     # ==================================================================
     # DIAGNOSI — verifica offerte su ManoMano (SOLA LETTURA)
@@ -1779,6 +1886,40 @@ class ManoManoConnector(MarketplaceConnector):
             return urls[pos] if pos < len(urls) else ""
         if st == "attribute":
             return self._attribute_value(product, mapping.attribute_id)
+        if st == "supplier_code":
+            return self._supplier_code(product, mapping.supplier_partner_id)
+        return ""
+
+    @staticmethod
+    def _supplier_code(product, partner=None):
+        """Codice articolo del fornitore (Acquisto → Fornitori), per sku_manufacturer.
+
+        ManoMano ammette la scheda senza EAN a patto che ci siano
+        `sku_manufacturer` **e** `brand` (regola dichiarata da loro nella
+        descrizione del campo). In HD casa il codice del costruttore vive sulle
+        righe fornitore — `product.supplierinfo.product_code` — che la mappatura
+        del feed NON può raggiungere: punta a `ir.model.fields` filtrato sui soli
+        modelli prodotto. Da qui questa fonte dedicata.
+
+        Quale riga si prende:
+          - se il fornitore è indicato nella mappatura, la sua;
+          - altrimenti la PRIMA in ordine Odoo (`sequence`), cioè il fornitore
+            preferito, **saltando le righe senza codice**: meglio il codice del
+            secondo fornitore che una cella vuota.
+
+        Le righe definite sul TEMPLATE valgono per tutte le varianti, quindi si
+        parte da `product.seller_ids`, che le comprende entrambe. Difensivo: se
+        il campo non esiste (modulo acquisti assente) si torna stringa vuota.
+        """
+        righe = getattr(product, "seller_ids", None)
+        if not righe:
+            return ""
+        if partner:
+            righe = righe.filtered(lambda s: s.partner_id.id == partner.id)
+        for riga in righe.sorted(key=lambda s: (s.sequence or 0, s.id)):
+            codice = (riga.product_code or "").strip()
+            if codice:
+                return codice
         return ""
 
     @staticmethod
