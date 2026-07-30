@@ -334,24 +334,15 @@ class ManoManoConnector(MarketplaceConnector):
         products = Product.search(
             [("product_tmpl_id.product_tag_ids", "in", tags.ids)], order="id")
 
-        rows, skipped_no_weight = self._offer_rows(products, channel)
-        # Gli scarti per peso mancante vanno detti QUI, nel log che l'utente
-        # legge: nel log del server sarebbero invisibili, e il prodotto
-        # sparirebbe dal marketplace senza che nessuno sappia perché.
-        nota_peso = ""
-        if skipped_no_weight:
-            esempi = ", ".join(skipped_no_weight[:10])
-            if len(skipped_no_weight) > 10:
-                esempi += ", …"
-            nota_peso = (
-                " %s prodotti SALTATI perché senza peso in Odoo (ManoMano "
-                "rifiuta le offerte con peso a zero): %s. Compilare il peso, "
-                "oppure impostare un peso di ripiego sul canale." % (
-                    len(skipped_no_weight), esempi))
+        rows, skipped = self._offer_rows(products, channel)
+        # Gli scarti vanno detti QUI, nel log che l'utente legge: nel log del
+        # server sarebbero invisibili, e il prodotto sparirebbe dal marketplace
+        # senza che nessuno sappia perché.
+        nota_scarti = self._skip_note(skipped)
         if not rows:
             self._log_offers("skip",
                              "Nessuna offerta valida da inviare (prodotti senza "
-                             "default_code, prezzo o peso)." + nota_peso)
+                             "default_code, prezzo o peso)." + nota_scarti)
             return 0
 
         items = [self._build_offer_item(r) for r in rows]
@@ -386,8 +377,32 @@ class ManoManoConnector(MarketplaceConnector):
             "Offerte ManoMano: %s righe valide, ACCETTATE %s (contract: %s), "
             "blocchi con rifiuti %s.%s%s" % (
                 len(items), total_sent, ", ".join(contracts), errors,
-                nota_rifiuti, nota_peso))
+                nota_rifiuti, nota_scarti))
         return total_sent
+
+    @staticmethod
+    def _skip_note(skipped):
+        """Frase leggibile sui prodotti NON inviati, con il perché e qualche SKU.
+
+        Uno scarto silenzioso è peggio di un rifiuto: il rifiuto almeno si vede
+        nel log di ManoMano, lo scarto no — il prodotto semplicemente non è sul
+        marketplace e nessuno sa dire perché.
+        """
+        MOTIVI = {
+            "peso": ("senza peso in Odoo (ManoMano rifiuta le offerte con peso "
+                     "a zero): compilare il peso, oppure impostare un peso di "
+                     "ripiego sul canale"),
+            "prezzo": ("con prezzo a zero nel listino di vendita: non si "
+                       "pubblica per non regalare merce"),
+        }
+        pezzi = []
+        for motivo, skus in (skipped or {}).items():
+            if not skus:
+                continue
+            esempi = ", ".join(skus[:10]) + (", …" if len(skus) > 10 else "")
+            pezzi.append(" %s prodotti SALTATI perché %s. SKU: %s." % (
+                len(skus), MOTIVI.get(motivo, motivo), esempi))
+        return "".join(pezzi)
 
     def _offer_rows(self, products, channel):
         """Costruisce le righe grezze dell'offerta. Salta e logga gli scarti.
@@ -410,7 +425,7 @@ class ManoManoConnector(MarketplaceConnector):
         viene dal canale (precondizione verificata in push_offers).
         """
         rows = []
-        skipped = []
+        skipped = {"peso": [], "prezzo": []}
         for product in products:
             sku = (product.default_code or "").strip()
             if not sku:
@@ -421,6 +436,17 @@ class ManoManoConnector(MarketplaceConnector):
             if price is None:
                 _logger.info("ManoMano: prodotto %s (%s) senza prezzo, saltato.",
                              product.display_name, sku)
+                continue
+            # PREZZO A ZERO O NEGATIVO: non si manda MAI. Non è una questione di
+            # validazione API ma di soldi: un'offerta a 0 € su un marketplace è
+            # merce regalata, e l'ordine arriverebbe prima che ce ne accorgiamo.
+            # Meglio un prodotto non pubblicato che un prodotto svenduto.
+            if float(price) <= 0:
+                skipped["prezzo"].append(sku)
+                _logger.info(
+                    "ManoMano: prodotto %s (%s) con prezzo %s nel listino, "
+                    "saltato (mai pubblicare a zero).",
+                    product.display_name, sku, price)
                 continue
             # PESO: ManoMano rifiuta l'offerta se display_weight non è > 0
             # (ERR_PIM_OFFER_API_REQUEST_VALIDATION). Prima mandavamo 0.0 e il
@@ -433,14 +459,20 @@ class ManoManoConnector(MarketplaceConnector):
             if weight <= 0:
                 weight = float(channel.manomano_default_weight or 0.0)
             if weight <= 0:
-                skipped.append(sku)
+                skipped["peso"].append(sku)
                 _logger.info(
                     "ManoMano: prodotto %s (%s) senza peso, saltato "
                     "(ManoMano rifiuta display_weight = 0; per pubblicarlo "
                     "comunque impostare il peso di ripiego sul canale).",
                     product.display_name, sku)
                 continue
-            qty = self._available_quantity(product, channel)
+            # GIACENZA MAI NEGATIVA. In Odoo la quantità disponibile può andare
+            # sotto zero (venduto più di quanto risulta a magazzino): inviarla
+            # così fa rifiutare l'offerta con "stock must be greater than or
+            # equal to 0". Sotto zero significa comunque "niente da vendere",
+            # quindi si dichiara 0 — che è anche il modo corretto di mettere in
+            # pausa un'offerta su ManoMano, senza cancellarla.
+            qty = max(0, int(round(self._available_quantity(product, channel))))
             sale_delay = int(product.sale_delay or 0)
             evasione = (sale_delay if sale_delay > 0
                         else channel.processing_time_default)
@@ -450,7 +482,7 @@ class ManoManoConnector(MarketplaceConnector):
             rows.append({
                 "sku": sku,
                 "price": round(float(price), 2),
-                "stock": int(round(qty)),
+                "stock": qty,
                 "weight": weight,
                 "shipping_time_min": shipping_time_min,
                 "shipping_time_max": shipping_time_max,
@@ -1478,6 +1510,25 @@ class ManoManoConnector(MarketplaceConnector):
     # ==================================================================
     # ORDINI — spedizione (gemello BricoBravo). Tracking URL OBBLIGATORIO.
     # ==================================================================
+    @staticmethod
+    def _shipment_quantity(value):
+        """Quantità INTERA per il payload di spedizione (0 = riga da scartare).
+
+        In Odoo le quantità sono decimali: `1.0` finisce nel JSON come `1.0` e
+        ManoMano rifiuta l'intera spedizione con
+        `invalid value for the 'products.quantity' field`. Va quindi convertita
+        in intero. Valori nulli, negativi o non numerici ritornano 0, e il
+        chiamante scarta quelle righe invece di mandarle.
+
+        Le frazioni si arrotondano all'intero più vicino: ManoMano ragiona a
+        pezzi e una riga da 2,4 pezzi non è rappresentabile nel loro formato.
+        """
+        try:
+            quantity = int(round(float(value or 0)))
+        except (TypeError, ValueError):
+            return 0
+        return quantity if quantity > 0 else 0
+
     def push_shipment(self, order_map):
         """Comunica a ManoMano corriere + tracking (URL obbligatorio). Idempotente.
 
@@ -1547,9 +1598,14 @@ class ManoManoConnector(MarketplaceConnector):
             sku = (line.product_id.default_code or "").strip()
             if not sku:
                 continue
+            quantity = self._shipment_quantity(line.product_uom_qty)
+            if not quantity:
+                # Riga senza quantità da spedire (sconti, righe azzerate): non
+                # si manda, altrimenti ManoMano rifiuta l'intera spedizione.
+                continue
             products.append({
                 "seller_sku": sku,
-                "quantity": line.product_uom_qty,
+                "quantity": quantity,
             })
 
         item = {
