@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_kaufland_offer_user,kaufland.offer user,model_kaufland_offer,base.group_user,1,0,0,0
+access_kaufland_offer_manager,kaufland.offer manager,model_kaufland_offer,base.group_system,1,1,1,1
+access_kaufland_market_user,centrivo.kaufland.market user,model_centrivo_kaufland_market,base.group_user,1,0,0,0
+access_kaufland_market_manager,centrivo.kaufland.market manager,model_centrivo_kaufland_market,base.group_system,1,1,1,1

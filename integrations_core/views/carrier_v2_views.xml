@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Anagrafica corrieri -->
+    <record id="view_carrier_brand_list" model="ir.ui.view">
+        <field name="name">centrivo.carrier.brand.list</field>
+        <field name="model">centrivo.carrier.brand</field>
+        <field name="arch" type="xml">
+            <list string="Corrieri" editable="bottom">
+                <field name="name"/>
+                <field name="code"/>
+                <field name="tracking_url_template"
+                       placeholder="https://vivi.brt.it/?tracking={tracking}"/>
+                <field name="active" widget="boolean_toggle"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_carrier_brand" model="ir.actions.act_window">
+        <field name="name">Corrieri</field>
+        <field name="res_model">centrivo.carrier.brand</field>
+        <field name="view_mode">list</field>
+    </record>
+
+    <!-- Vettore -> Corriere -->
+    <record id="view_carrier_source_list" model="ir.ui.view">
+        <field name="name">centrivo.carrier.source.list</field>
+        <field name="model">centrivo.carrier.source</field>
+        <field name="arch" type="xml">
+            <list string="Vettori" editable="bottom">
+                <field name="source_record_key"/>
+                <field name="source_display" readonly="1"/>
+                <field name="brand_id"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_carrier_source" model="ir.actions.act_window">
+        <field name="name">Vettori</field>
+        <field name="res_model">centrivo.carrier.source</field>
+        <field name="view_mode">list</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Collega i tuoi vettori a un corriere</p>
+            <p>Scegli il vettore come lo vedi nei trasferimenti e indica a quale
+               corriere appartiene: <em>BRT 100</em> è <em>BRT</em>. Il codice da
+               inviare a ciascun marketplace lo sceglie il modulo.</p>
+        </field>
+    </record>
+
+    <!-- Eccezioni -->
+    <record id="view_carrier_override_list" model="ir.ui.view">
+        <field name="name">centrivo.carrier.override.list</field>
+        <field name="model">centrivo.carrier.override</field>
+        <field name="arch" type="xml">
+            <list string="Eccezioni corrieri" editable="bottom">
+                <field name="channel_id"/>
+                <field name="brand_id"/>
+                <field name="external_code"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_carrier_override" model="ir.actions.act_window">
+        <field name="name">Eccezioni corrieri</field>
+        <field name="res_model">centrivo.carrier.override</field>
+        <field name="view_mode">list</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Nessuna eccezione: è come deve essere</p>
+            <p>Aggiungi una riga solo se un marketplace cambia il codice di un
+               corriere e non vuoi attendere un aggiornamento del modulo.</p>
+        </field>
+    </record>
+
+    <!-- Copertura -->
+    <record id="view_carrier_coverage_list" model="ir.ui.view">
+        <field name="name">centrivo.carrier.coverage.list</field>
+        <field name="model">centrivo.carrier.coverage</field>
+        <field name="arch" type="xml">
+            <list string="Copertura corrieri" create="false">
+                <field name="brand_name"/>
+                <field name="channel_name"/>
+                <field name="state" decoration-danger="state == 'missing'"
+                       decoration-warning="state == 'override'"/>
+                <field name="external_code"/>
+                <field name="source_names"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_carrier_coverage" model="ir.actions.server">
+        <field name="name">Copertura corrieri</field>
+        <field name="model_id" ref="model_centrivo_carrier_coverage"/>
+        <field name="state">code</field>
+        <field name="code">action = model.action_rebuild()</field>
+    </record>
+</odoo>

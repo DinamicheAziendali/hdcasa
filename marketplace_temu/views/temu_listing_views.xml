@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_temu_listing_list" model="ir.ui.view">
+        <field name="name">centrivo.temu.listing.list</field>
+        <field name="model">centrivo.temu.listing</field>
+        <field name="arch" type="xml">
+            <list string="Schede Temu">
+                <field name="channel_id"/>
+                <field name="out_sku_sn"/>
+                <field name="product_id"/>
+                <field name="goods_name"/>
+                <field name="status_label"/>
+                <field name="detail_label"/>
+                <field name="stock_sent"/>
+                <field name="price_sent"/>
+                <field name="orphan"/>
+                <field name="last_seen"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_temu_listing_form" model="ir.ui.view">
+        <field name="name">centrivo.temu.listing.form</field>
+        <field name="model">centrivo.temu.listing</field>
+        <field name="arch" type="xml">
+            <form string="Scheda Temu">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="channel_id"/>
+                            <field name="out_sku_sn"/>
+                            <field name="product_id"/>
+                            <field name="orphan"/>
+                        </group>
+                        <group>
+                            <field name="goods_id"/>
+                            <field name="sku_id"/>
+                            <field name="sku_status"/>
+                            <field name="sku_sub_status"/>
+                            <field name="status_label"/>
+                            <field name="detail_label"/>
+                            <field name="last_seen"/>
+                        </group>
+                    </group>
+                    <group string="Ultimo errore">
+                        <field name="last_error" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_temu_listing_search" model="ir.ui.view">
+        <field name="name">centrivo.temu.listing.search</field>
+        <field name="model">centrivo.temu.listing</field>
+        <field name="arch" type="xml">
+            <search string="Schede Temu">
+                <field name="out_sku_sn"/>
+                <field name="goods_name"/>
+                <field name="product_id"/>
+                <filter name="filtro_orfane" string="Orfane"
+                        domain="[('orphan', '=', True)]"/>
+                <filter name="filtro_in_vendita" string="In vendita"
+                        domain="[('sku_sub_status', '=', '2001')]"/>
+                <filter name="filtro_prezzo_rifiutato" string="Prezzo rifiutato"
+                        domain="[('sku_sub_status', 'in', ['4003', '3004', '6002'])]"/>
+                <group expand="0" string="Raggruppa per">
+                    <filter name="gruppo_stato" string="Stato"
+                            context="{'group_by': 'status_label'}"/>
+                    <filter name="gruppo_dettaglio" string="Dettaglio operativo"
+                            context="{'group_by': 'detail_label'}"/>
+                    <filter name="gruppo_canale" string="Canale"
+                            context="{'group_by': 'channel_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_temu_listing" model="ir.actions.act_window">
+        <field name="name">Schede Temu</field>
+        <field name="res_model">centrivo.temu.listing</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem id="menu_temu_listing"
+              name="Schede Temu"
+              parent="integrations_core.menu_integrations_root"
+              action="action_temu_listing"
+              sequence="45"/>
+</odoo>

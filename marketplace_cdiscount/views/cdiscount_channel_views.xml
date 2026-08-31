@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <record id="view_centrivo_channel_form_cdiscount" model="ir.ui.view">
+    <field name="name">centrivo.channel.form.cdiscount</field>
+    <field name="model">centrivo.channel</field>
+    <field name="inherit_id" ref="integrations_core.view_integration_channel_form"/>
+    <field name="arch" type="xml">
+      <!-- ⚠️ Stessa ragione di Kaufland: Cdiscount non legge mai «Chiave API»
+           del nucleo (zero occorrenze nel modulo), le sue credenziali sono
+           `cdiscount_client_id` e `cdiscount_client_secret`. Lasciarla in
+           vista invita a incollarci la chiave sbagliata. -->
+      <field name="api_key" position="attributes">
+        <attribute name="invisible">connector_code == 'cdiscount'</attribute>
+      </field>
+      <notebook position="inside">
+        <page string="Cdiscount" name="cdiscount"
+              invisible="connector_code != 'cdiscount'">
+          <group>
+            <group string="Collegamento">
+              <field name="cdiscount_client_id"/>
+              <field name="cdiscount_client_secret" password="True"/>
+              <field name="cdiscount_seller_id"/>
+              <!-- Il gettone se lo scrive il connettore. Sta qui perche'
+                   quando qualcosa non va e' la prima cosa da guardare: un
+                   gettone scaduto e un segreto sbagliato danno lo stesso
+                   401. -->
+              <field name="cdiscount_gettone" password="True"/>
+              <!-- ⚠️ I DUE CAMPI DELLA SCADENZA STANNO INSIEME, e il secondo
+                   e' il motivo per cui il primo serve a qualcosa. Il campo
+                   vero e' un Float in secondi epoch — cosi' lo scrive e lo
+                   legge il connettore — e in schermata si mostra come
+                   «1.787.563.200,00»: chi guarda non sa nemmeno dire se sia
+                   passato. Quello sotto e' lo stesso istante in data e ora,
+                   calcolato e non memorizzato. Vedi
+                   models/cdiscount_channel.py. -->
+              <field name="cdiscount_gettone_scade"/>
+              <field name="cdiscount_gettone_scade_il"/>
+            </group>
+            <group string="Dove nascono le schede">
+              <field name="cdiscount_canale_vendita"/>
+              <!-- ⚠️ QUESTO CAMPO NON SI TOGLIE DA QUI. Sulla piattaforma
+                   esterna la colonna esisteva, la migrazione l'aveva creata
+                   e la guardia dell'invio la controllava — e nessuna
+                   schermata la scriveva: il bottone non sarebbe mai partito
+                   senza una modifica a mano al database. Toglierlo dalla
+                   vista rimette il modulo esattamente in quello stato, e non
+                   se ne accorge nessuno finche' non si prova a mandare.
+                   Vedi il commento sul campo in
+                   models/cdiscount_channel.py. -->
+              <field name="cdiscount_categoria"/>
+              <!-- I DUE BOTTONI CHE SCRIVONO SU UN CATALOGO PUBBLICO.
+
+                   ⚠️ `groups=` qui NASCONDE, non impedisce: un metodo di
+                   modello resta raggiungibile via RPC da qualunque utente
+                   interno, e `centrivo.channel` è in scrittura a
+                   `base.group_user`. La porta vera è l'`AccessError` dentro
+                   i metodi (`models/cdiscount_channel.py`,
+                   `_cdiscount_solo_amministratori`). I due vanno insieme.
+
+                   ⚠️ E stanno sotto la categoria apposta: è il campo che
+                   decide in quale ramo del catalogo nascono le schede, e
+                   chi sta per schiacciare deve averlo appena letto. -->
+              <!-- ⚠️ Il `confirm=` c'è anche qui, e non è pignoleria: questo
+                   è IL PRIMO BOTTONE CHE VERRÀ PREMUTO, sul canale con la
+                   categoria appena compilata. Scrive su un catalogo pubblico
+                   e non si annulla come l'altro.
+
+                   ⚠️ Il `confirm=` è una stringa STATICA: Odoo non vi
+                   interpola i campi, quindi non può mostrare QUALE categoria
+                   sia scritta sul canale — può solo dire di guardarla. La
+                   categoria vera compare nella notifica e nel registro, cioè
+                   DOPO l'invio. -->
+              <button name="action_cdiscount_manda_una" type="object"
+                      string="Manda UNA scheda"
+                      groups="base.group_system"
+                      confirm="Questo crea UNA scheda su un catalogo pubblico, sul serio, e non si annulla. Prima di procedere: guarda il campo «Categoria Cdiscount (livello 3)» qui accanto ed è quella in cui la scheda nascerà. L'esito torna in modo asincrono e scade in tre giorni."
+                      help="Manda una sola scheda a Cdiscount. È così che si fa la prima prova sul vero: si guarda sul portale che sia nata giusta, e solo dopo si manda il resto."/>
+              <button name="action_cdiscount_manda_schede" type="object"
+                      string="Manda le schede pronte"
+                      groups="base.group_system"
+                      confirm="Questo crea schede su un catalogo pubblico, sul serio, e non si annulla. L'esito torna in modo asincrono e scade in tre giorni. Controlla che la categoria sia quella giusta, di LIVELLO 3. Procedere?"
+                      help="Manda a Cdiscount le schede che hanno titolo, descrizione e immagini e non sono già partite, a pacchetti da 10.000. Un giro alla volta: se ne restano, il messaggio lo dice e si ripete."/>
+              <!-- ⚠️ IL GEMELLO DI «MANDA UNA SCHEDA», e senza di lui il
+                   giro era CHIUSO. Tutta la metà raccoglitore era
+                   raggiungibile solo dal cron; il cron nasce spento, e la
+                   lista di controllo dice di accenderlo «solo quando una
+                   raccolta vera è andata pulita». Per accendere il cron
+                   serviva una raccolta pulita, per avere una raccolta pulita
+                   serviva il cron: l'unica uscita era Impostazioni →
+                   Tecnico → Azioni pianificate → Esegui manualmente, che non
+                   è roba per chi non è programmatore.
+
+                   ⚠️ Stessa guardia degli altri due, e vanno insieme: il
+                   `groups=` qui NASCONDE, l'`AccessError` nel metodo
+                   IMPEDISCE.
+
+                   ⚠️ E NIENTE `confirm=`, ed è una scelta: questo bottone
+                   non scrive niente su Cdiscount, legge e basta. Un confirm
+                   su un gesto senza conseguenze là fuori insegna a cliccare
+                   via i confirm, e i due che contano stanno qui sopra. -->
+              <button name="action_cdiscount_raccogli_adesso" type="object"
+                      string="Raccogli gli esiti adesso"
+                      groups="base.group_system"
+                      help="Va a riprendere subito l'esito dei pacchetti aperti, senza aspettare il giro automatico. È così che si guarda la prima raccolta vera: l'esito di un pacchetto scade in tre giorni, e il cron va acceso solo dopo che una raccolta è andata pulita."/>
+            </group>
+          </group>
+        </page>
+      </notebook>
+    </field>
+  </record>
+</odoo>

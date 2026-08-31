@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <record id="view_kaufland_offer_list" model="ir.ui.view">
+    <field name="name">kaufland.offer.list</field>
+    <field name="model">kaufland.offer</field>
+    <field name="arch" type="xml">
+      <list string="Offerte Kaufland">
+        <field name="market_id"/>
+                <field name="channel_id" optional="hide"/>
+        <field name="product_id"/>
+        <field name="ean"/>
+        <!-- ⚠️ Il guscio e' l'unico stato che uccide in silenzio:
+             l'offerta non vende e non protesta. Senza colore avrebbe lo
+             stesso aspetto di una riga «pronta». -->
+        <field name="stato_scheda"
+               decoration-warning="stato_scheda == 'guscio'"
+               decoration-muted="stato_scheda == 'sconosciuto'"/>
+        <field name="id_unit"/>
+        <field name="ultimo_esito"
+               decoration-danger="ultimo_esito == 'errore'"
+               decoration-muted="ultimo_esito == 'saltato'"/>
+        <field name="controllato_il"/>
+        <!-- ⚠️ Vuoto significa che prezzo e giacenza non sono MAI stati
+             mandati a Kaufland da qui: l'offerta vende con i valori con cui
+             e' nata. E' la colonna da guardare dopo un riaggancio. -->
+        <field name="allineato_il"
+               decoration-warning="not allineato_il and id_unit"/>
+      </list>
+    </field>
+  </record>
+
+  <record id="view_kaufland_offer_search" model="ir.ui.view">
+    <field name="name">kaufland.offer.search</field>
+    <field name="model">kaufland.offer</field>
+    <field name="arch" type="xml">
+      <search>
+        <field name="ean"/>
+        <field name="product_id"/>
+        <filter name="senza_identificativo" string="Senza identificativo"
+                domain="[('id_unit', '=', False)]"/>
+        <filter name="scheda_pronta" string="Scheda pronta"
+                domain="[('stato_scheda', '=', 'pronta')]"/>
+        <filter name="solo_guscio" string="Solo guscio"
+                domain="[('stato_scheda', '=', 'guscio')]"/>
+        <!-- ⚠️ Questo filtro deve continuare a ESCLUDERE «sconosciuto»:
+             e' il punto che impedisce a un silenzio dell'API di far
+             scrivere centinaia di schede inutili. -->
+        <filter name="serve_scheda" string="Serve la scheda"
+                domain="[('stato_scheda', 'in', ['guscio', 'assente'])]"/>
+        <filter name="falliti" string="Ultimo giro fallito"
+                domain="[('ultimo_esito', '=', 'errore')]"/>
+        <!-- Le offerte vive che nessun allineamento ha mai toccato. -->
+        <filter name="mai_allineate" string="Mai allineate"
+                domain="[('id_unit', '!=', False),
+                         ('allineato_il', '=', False)]"/>
+        <group expand="0" string="Raggruppa per">
+          <filter name="per_canale" string="Canale"
+                  context="{'group_by': 'channel_id'}"/>
+          <filter name="per_scheda" string="Stato scheda"
+                  context="{'group_by': 'stato_scheda'}"/>
+        </group>
+      </search>
+    </field>
+  </record>
+
+  <record id="action_kaufland_offer" model="ir.actions.act_window">
+    <field name="name">Offerte Kaufland</field>
+    <field name="res_model">kaufland.offer</field>
+    <field name="view_mode">list,form</field>
+  </record>
+
+  <menuitem id="menu_kaufland_offer"
+            name="Offerte Kaufland"
+            parent="integrations_core.menu_integrations_root"
+            action="action_kaufland_offer"
+            sequence="47"/>
+</odoo>

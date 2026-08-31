@@ -5,4 +5,5 @@ from . import manomano_channel
 from . import manomano_feed_field
 from . import manomano_feed_map
 from . import manomano_invoice
+from . import manomano_offer
 from . import manomano_order_map

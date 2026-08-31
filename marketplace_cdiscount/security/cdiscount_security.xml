@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Copyright 2026 Angelo Margarella (www.hdcasa.it)
+    License OPL-1 (Odoo Proprietary License v1.0). See LICENSE file for full terms.
+
+    LE REGOLE MULTI-AZIENDA dei due modelli di questa consegna.
+
+    Non è multi-tenant infrastrutturale: è la separazione `company_id`
+    standard di Odoo dentro la STESSA istanza. Un record si vede solo dagli
+    utenti delle aziende a cui appartiene (o se `company_id` è vuoto, che
+    qui non capita mai — vedi sotto).
+
+    ⚠️ SENZA QUESTE DUE REGOLE, CON DUE AZIENDE NELLA STESSA ODOO le schede e
+    i pacchetti di una si vedono dall'altra. Non è un problema di
+    riservatezza fra estranei — le aziende sono la stessa casa — ma di
+    GESTO SBAGLIATO: la pagina delle schede esiste per far guardare a mano le
+    righe ferme e rimetterle in gioco dal menu «Azioni», e quel gesto crea
+    schede su un catalogo PUBBLICO. Con gli elenchi mescolati, un «seleziona
+    tutto» prende anche le righe dell'altra azienda, e il filtro nella
+    schermata non le distingue in nessun modo.
+
+    ⚠️ E QUESTO NON È UN VEZZO DI QUESTO MODULO: `integrations_core` ha una
+    regola così per tutti e sette i suoi modelli, `centrivo_carrier_base` per
+    tutti e quattro, `centrivo_shipment_tracking` per tutti e dieci. È anche
+    una voce standard della revisione dell'App Store di Odoo. L'unico
+    connettore di casa che non ce l'ha è Kaufland: è lui l'eccezione, non il
+    resto — ed è un seguito da fare lì.
+    ⚠️ Fino al 2026-08-27 questa riga diceva «Kaufland e Temu». Temu la sua
+    regola ce l'ha da quel giorno (`marketplace_temu/security/
+    temu_security.xml`, due `ir.rule` globali sui suoi due modelli propri):
+    la riga è stata corretta insieme, perché un commento che elenca chi manca
+    è utile solo finché l'elenco è vero.
+
+    ⚠️ IL PATTERN È COPIATO, NON REINVENTATO: regola GLOBALE (`global=True`,
+    cioè vale per chiunque, anche per gli amministratori) con il dominio
+    `['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]`.
+    `company_ids` sono le aziende selezionate dall'utente nel selettore in
+    alto. Il ramo `= False` tiene dentro i record senza azienda: qui non ce
+    ne sono — `company_id` è `related` di `channel_id.company_id`, che è
+    `required` — ma toglierlo renderebbe la regola diversa da tutte le altre
+    della casa per una differenza che non serve a niente.
+
+    ⚠️ NIENTE MIGRAZIONE DI RIALLINEAMENTO, e va detto perché
+    `integrations_core` ne ha una. Là le regole sono arrivate DOPO i record,
+    che erano nati senza `company_id` e sarebbero spariti dalla vista.
+    Qui i due modelli nascono in questa stessa consegna, `company_id` è
+    memorizzato e calcolato dal canale fin dalla prima riga, e non esiste
+    nessun record preesistente da riallineare.
+-->
+<odoo>
+  <record id="cdiscount_pacchetto_company_rule" model="ir.rule">
+    <field name="name">cdiscount.pacchetto multi-company</field>
+    <field name="model_id" ref="model_cdiscount_pacchetto"/>
+    <field name="global" eval="True"/>
+    <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+  </record>
+
+  <record id="cdiscount_scheda_company_rule" model="ir.rule">
+    <field name="name">cdiscount.scheda multi-company</field>
+    <field name="model_id" ref="model_cdiscount_scheda"/>
+    <field name="global" eval="True"/>
+    <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+  </record>
+</odoo>

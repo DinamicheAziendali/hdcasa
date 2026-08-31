@@ -305,6 +305,48 @@ class IntegrationChannel(models.Model):
         self.ensure_one()
         return MarketplaceConnector.for_channel(self)
 
+    def _canale_registra(self, channel, nome, operazione, messaggio,
+                         external_id=None, esito="error"):
+        """Una riga nel registro delle operazioni, che non porti via il giro.
+
+        Serve tutti i giri automatici che promettono l'isolamento per canale,
+        qui e nei moduli marketplace_* che ereditano questo modello.
+
+        ⚠️ SCRIVERE IL REGISTRO E' L'ULTIMA COSA CHE DEVE POTER FAR CADERE UN
+        GIRO. Se la riga non si scrive — una transazione gia' abortita da un
+        guasto vero del database, per dire — resta comunque il log di sistema,
+        e gli altri canali vanno serviti lo stesso.
+
+        ⚠️ IL NOME ARRIVA COME PAROLA, gia' letta da chi chiama quando la
+        transazione era sana. Leggere `channel.name` qui dentro sarebbe una
+        lettura SQL dentro un gestore d'errore, cioe' la stessa eccezione che
+        si sta cercando di sopravvivere. `channel.id` e `channel.company_id`
+        si leggono invece DENTRO il savepoint, dove un guasto e' contenuto.
+
+        ⚠️ E IL SAVEPOINT NON E' DECORATIVO, benche' l'eccezione sia gia'
+        catturata qui sotto. Catturare un errore del database in Python NON
+        salva la transazione: PostgreSQL la lascia ABORTITA, e il canale
+        successivo esploderebbe gia' nel flush d'ingresso del suo savepoint.
+        E' la stessa cura dei gemelli gia' in casa,
+        `kaufland_channel._kaufland_registra` e `cdiscount._cdiscount_registra`.
+        """
+        try:
+            with self.env.cr.savepoint():
+                valori = {
+                    "channel_id": channel.id,
+                    "operation": operazione,
+                    "result": esito,
+                    "message": messaggio,
+                    "company_id": channel.company_id.id,
+                }
+                if external_id is not None:
+                    valori["external_id"] = external_id
+                self.env["centrivo.job.log"].create(valori)
+        except Exception:  # noqa: BLE001 - il registro non porta via il giro
+            _logger.exception(
+                "Non si e' potuta scrivere la riga di registro (%s/%s) del "
+                "canale %s", operazione, esito, nome)
+
     def action_pull_orders(self):
         """Pulsante/azione: scarica gli ordini per questo canale."""
         for channel in self:
@@ -361,22 +403,28 @@ class IntegrationChannel(models.Model):
         for channel in self:
             if not channel.active:
                 continue
+            # ⚠️ Il nome si legge ORA, mentre la transazione e' sana: vedi
+            # `_canale_registra`.
+            nome = channel.name
             try:
-                channel._get_connector().generate_stock_feed()
+                # ⚠️ IL SAVEPOINT, e perche' intercettare l'eccezione NON
+                # basta: un errore che viene dal DATABASE lascia la
+                # transazione ABORTITA, e da li' in poi ogni canale
+                # successivo fallisce — mentre il commit finale del giro
+                # diventa un ROLLBACK silenzioso che si porta via anche i
+                # canali gia' andati bene. E' il rollback A QUESTO savepoint
+                # che rimette la transazione in piedi.
+                with self.env.cr.savepoint():
+                    channel._get_connector().generate_stock_feed()
             except NotImplementedError:
                 _logger.info(
                     "Il connettore del canale %s non espone un feed prezzi/giacenze.",
-                    channel.name)
+                    nome)
             except Exception as exc:  # noqa: BLE001 - isolamento per canale
                 _logger.exception("Generazione feed fallita per il canale %s",
-                                  channel.name)
-                self.env["centrivo.job.log"].create({
-                    "channel_id": channel.id,
-                    "operation": "export_stock_feed",
-                    "result": "error",
-                    "message": str(exc)[:2000],
-                    "company_id": channel.company_id.id,
-                })
+                                  nome)
+                self._canale_registra(channel, nome, "export_stock_feed",
+                                      str(exc)[:2000])
         return True
 
     @api.model
@@ -446,22 +494,20 @@ class IntegrationChannel(models.Model):
         for channel in self:
             if not channel.active:
                 continue
+            nome = channel.name  # letto mentre la transazione e' sana
             try:
-                channel._get_connector().generate_catalog_feed()
+                # ⚠️ Il savepoint per canale: vedi il gemello sopra.
+                with self.env.cr.savepoint():
+                    channel._get_connector().generate_catalog_feed()
             except NotImplementedError:
                 _logger.info(
                     "Il connettore del canale %s non espone un feed catalogo.",
-                    channel.name)
+                    nome)
             except Exception as exc:  # noqa: BLE001 - isolamento per canale
                 _logger.exception("Generazione feed catalogo fallita per il canale %s",
-                                  channel.name)
-                self.env["centrivo.job.log"].create({
-                    "channel_id": channel.id,
-                    "operation": "export_catalog_feed",
-                    "result": "error",
-                    "message": str(exc)[:2000],
-                    "company_id": channel.company_id.id,
-                })
+                                  nome)
+                self._canale_registra(channel, nome, "export_catalog_feed",
+                                      str(exc)[:2000])
         return True
 
     @api.model
@@ -514,17 +560,15 @@ class IntegrationChannel(models.Model):
         """
         channels = self.search([("active", "=", True)])
         for channel in channels:
+            nome = channel.name  # letto mentre la transazione e' sana
             try:
-                channel.action_pull_orders()
+                # ⚠️ Il savepoint per canale: vedi `_canale_registra`.
+                with self.env.cr.savepoint():
+                    channel.action_pull_orders()
             except Exception as exc:  # noqa: BLE001 - isolamento per canale
-                _logger.exception("Pull fallito per il canale %s", channel.name)
-                self.env["centrivo.job.log"].create({
-                    "channel_id": channel.id,
-                    "operation": "pull_orders",
-                    "result": "error",
-                    "message": str(exc)[:2000],
-                    "company_id": channel.company_id.id,
-                })
+                _logger.exception("Pull fallito per il canale %s", nome)
+                self._canale_registra(channel, nome, "pull_orders",
+                                      str(exc)[:2000])
         return True
 
     @api.model
@@ -547,6 +591,7 @@ class IntegrationChannel(models.Model):
         """
         OrderMap = self.env["centrivo.order.map"]
         for channel in self.search([("active", "=", True)]):
+            nome = channel.name  # letto mentre la transazione e' sana
             try:
                 connector = channel._get_connector()
             except Exception:  # noqa: BLE001 - canale senza connettore valido
@@ -557,6 +602,10 @@ class IntegrationChannel(models.Model):
                 ("shipment_pushed", "=", False),
             ])
             for order_map in candidates:
+                # ⚠️ Il codice esterno si legge QUI, mentre la transazione e'
+                # certamente sana: dentro il gestore potrebbe essere ABORTITA,
+                # e li' anche solo LEGGERE un campo esplode.
+                esterno = order_map.external_id
                 sale_order = order_map.sale_order_id
                 if not sale_order:
                     continue
@@ -567,19 +616,19 @@ class IntegrationChannel(models.Model):
                 if not ready:
                     continue
                 try:
-                    connector.push_shipment(order_map)
+                    # ⚠️ IL SAVEPOINT PER ORDINE. Qui l'isolamento promesso e'
+                    # doppio — un ordine non blocca gli altri, un canale non
+                    # blocca gli altri — e senza savepoint non regge nessuno
+                    # dei due quando il guasto viene dal database.
+                    with self.env.cr.savepoint():
+                        connector.push_shipment(order_map)
                 except NotImplementedError:
                     break  # connettore senza push: inutile iterare gli altri ordini
                 except Exception as exc:  # noqa: BLE001 - isolamento per ordine
                     _logger.exception(
                         "Push spedizione fallito per l'ordine %s del canale %s",
-                        order_map.external_id, channel.name)
-                    self.env["centrivo.job.log"].create({
-                        "channel_id": channel.id,
-                        "operation": "push_shipment",
-                        "external_id": order_map.external_id,
-                        "result": "error",
-                        "message": str(exc)[:2000],
-                        "company_id": channel.company_id.id,
-                    })
+                        esterno, nome)
+                    self._canale_registra(channel, nome, "push_shipment",
+                                          str(exc)[:2000],
+                                          external_id=esterno)
         return True

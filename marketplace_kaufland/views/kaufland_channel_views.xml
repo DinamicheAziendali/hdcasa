@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <record id="view_centrivo_channel_form_kaufland" model="ir.ui.view">
+    <field name="name">centrivo.channel.form.kaufland</field>
+    <field name="model">centrivo.channel</field>
+    <field name="inherit_id" ref="integrations_core.view_integration_channel_form"/>
+    <field name="arch" type="xml">
+      <!-- ⚠️ «Chiave API» del nucleo si NASCONDE sui canali Kaufland.
+           Kaufland non la legge mai (verificato: zero occorrenze nel modulo):
+           le sue credenziali sono `kaufland_client_key` e
+           `kaufland_secret_key`, nella scheda qui sotto. Lasciarla in vista
+           e' un invito a incollarci dentro la chiave Kaufland e a chiedersi
+           per mezz'ora perche' non funziona — segnalato da Angelo il
+           2026-08-29. Si nasconde da QUI e non dal nucleo: `integrations_core`
+           regge BricoBravo e ManoMano in produzione, e la` non si tocca. -->
+      <field name="api_key" position="attributes">
+        <attribute name="invisible">connector_code == 'kaufland'</attribute>
+      </field>
+      <notebook position="inside">
+        <page string="Kaufland" name="kaufland"
+              invisible="connector_code != 'kaufland'">
+          <group>
+            <group string="Collegamento">
+              <!-- ⚠️ UNA VOLTA SOLA. Le chiavi Kaufland sono dell'account
+                   venditore, non del mercato: il mercato viaggia come
+                   `?storefront=` su ogni chiamata. Un canale per mercato
+                   avrebbe voluto dire lo stesso segreto copiato cinque
+                   volte, e chi ne dimentica uno alla rotazione rompe quel
+                   mercato in silenzio. -->
+              <field name="kaufland_client_key" password="True"/>
+              <field name="kaufland_secret_key" password="True"/>
+            </group>
+            <group string="Impostazioni">
+              <field name="kaufland_handling_time"/>
+              <field name="kaufland_cancello_aperto" invisible="1"/>
+            </group>
+          </group>
+
+          <!-- ⚠️ I MERCATI, e il cancello sta su OGNI RIGA. Un cancello solo
+               per tutto il canale vorrebbe dire che una lettura parziale su
+               Kaufland.de apre o chiude quello dell'Italia: un mercato che
+               legge male si porterebbe dietro gli altri. -->
+          <group string="Mercati">
+            <field name="kaufland_market_ids" nolabel="1">
+              <list editable="bottom">
+                <field name="storefront"/>
+                <field name="shipping_group_id"/>
+                <field name="warehouse_id" optional="hide"/>
+                <!-- PRIMA il numero, POI il riaggancio: finche' la soglia
+                     vale 0 il cancello NON si apre, e il primo giro si
+                     limita a misurarla e a chiedere conferma. -->
+                <field name="offerte_attese"/>
+                <field name="riagganciato" readonly="1"/>
+                <field name="riagganciato_il" readonly="1" optional="hide"/>
+                <field name="active" optional="hide"/>
+              </list>
+            </field>
+          </group>
+
+          <group string="Operazioni">
+            <!-- ⚠️ Ogni bottone gira UNA VOLTA PER MERCATO attivo, e l'esito
+                 nomina i mercati. Un mercato che rompe non ferma gli altri. -->
+            <button name="action_kaufland_riaggancia" type="object"
+                    string="Riaggancia le offerte esistenti"
+                    class="btn-primary" groups="base.group_system"
+                    help="Legge le offerte gia' vive su Kaufland, mercato per mercato, e popola la mappa. Non scrive nulla su Kaufland."/>
+            <button name="action_kaufland_ricognizione" type="object"
+                    string="Guarda le schede su Kaufland"
+                    groups="base.group_system"
+                    help="Per ogni prodotto etichettato, dice se la scheda Kaufland c'e', e' un guscio o manca. Sola lettura: non crea e non modifica nessuna offerta."/>
+            <!-- I bottoni che SCRIVONO su Kaufland.
+                 ⚠️ `invisible` non e' la guardia: la guardia vera e' il
+                 cancello di OGNI mercato dentro il connettore, piu'
+                 l'AccessError nei metodi. Qui si evita solo di mostrare un
+                 bottone che non farebbe niente. -->
+            <button name="action_kaufland_crea_una_offerta" type="object"
+                    string="Prova su UNA offerta"
+                    groups="base.group_system"
+                    invisible="not kaufland_cancello_aperto"
+                    help="Crea una sola offerta su Kaufland. E' cosi' che si fa la prima prova sul vero."/>
+            <button name="action_kaufland_crea_offerte" type="object"
+                    string="Crea le offerte mancanti"
+                    groups="base.group_system"
+                    invisible="not kaufland_cancello_aperto"
+                    confirm="Questo mette in vendita prodotti su Kaufland, sul serio, e non si annulla. Procedere?"
+                    help="Crea su Kaufland le offerte per i prodotti con la scheda pronta. Un giro alla volta: se ne restano, il messaggio lo dice e si ripete."/>
+            <button name="action_kaufland_allinea_una" type="object"
+                    string="Prova l'allineamento su UNA offerta"
+                    groups="base.group_system"
+                    invisible="not kaufland_cancello_aperto"
+                    help="Allinea una sola offerta. Col listino sbagliato l'allineamento RIESCE e mette in vendita prezzi sbagliati: la prova in piccolo e' l'unica difesa."/>
+            <button name="action_kaufland_allinea" type="object"
+                    string="Allinea prezzi e giacenze"
+                    groups="base.group_system"
+                    invisible="not kaufland_cancello_aperto"
+                    help="Manda a Kaufland solo cio' che e' cambiato: aggiorna le offerte che esistono gia', non ne crea nessuna."/>
+          </group>
+        </page>
+      </notebook>
+    </field>
+  </record>
+</odoo>

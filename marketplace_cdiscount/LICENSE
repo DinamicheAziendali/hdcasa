@@ -1,0 +1,36 @@
+Copyright 2026 Angelo Margarella (www.hdcasa.it)
+
+This module ("Marketplace - Cdiscount") is released under the
+Odoo Proprietary License v1.0 (OPL-1).
+
+-------------------------------------------------------------------------------
+SUMMARY OF TERMS (non-substitutive — see the official OPL-1 text)
+-------------------------------------------------------------------------------
+This is proprietary software. All rights are reserved by the copyright holder.
+
+You are NOT allowed to:
+  - redistribute, publish, sublicense or otherwise make this software (in source
+    or compiled form) available to any third party, in whole or in part, without
+    the prior written authorization of the copyright holder;
+  - resell, rent, lease or offer this software as a service to third parties
+    without such prior written authorization;
+  - remove or alter this copyright notice or the license references contained in
+    the source files.
+
+You are allowed to:
+  - use this software for your own business purposes, on the instances for which
+    it has been provided/authorized by the copyright holder;
+  - modify it for your own internal use, provided this license and the copyright
+    notice are preserved and the modifications are not redistributed.
+
+No warranty is provided: the software is supplied "as is", without warranty of
+any kind, to the extent permitted by applicable law.
+
+-------------------------------------------------------------------------------
+This summary does NOT replace the full legal text. The complete and binding
+terms of the Odoo Proprietary License v1.0 (OPL-1) are published by Odoo S.A.
+and available at:
+
+    https://www.odoo.com/documentation/18.0/legal/licenses.html
+
+In case of any discrepancy, the official OPL-1 text prevails.

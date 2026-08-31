@@ -1,0 +1,6 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_cdiscount_pacchetto_user,cdiscount.pacchetto user,model_cdiscount_pacchetto,base.group_user,1,0,0,0
+access_cdiscount_pacchetto_manager,cdiscount.pacchetto manager,model_cdiscount_pacchetto,base.group_system,1,1,1,1
+access_cdiscount_scheda_user,cdiscount.scheda user,model_cdiscount_scheda,base.group_user,1,0,0,0
+access_cdiscount_scheda_manager,cdiscount.scheda manager,model_cdiscount_scheda,base.group_system,1,1,1,1
+access_cdiscount_contenuti_wizard_manager,cdiscount.contenuti.wizard manager,model_cdiscount_contenuti_wizard,base.group_system,1,1,1,1

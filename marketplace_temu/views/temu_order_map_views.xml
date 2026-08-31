@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Il bottone che rilegge da Temu lo stato di una spedizione gia'
+        comunicata. Sta sull'ORDINE MAPPATO e non sul canale perche' la
+        domanda riguarda un ordine solo: «questa spedizione, Temu l'ha
+        presa?».
+
+        ⚠️ La vista del nucleo si EREDITA, non si modifica: integrations_core
+        e' in produzione sotto ManoMano e BricoBravo.
+
+        ⚠️ IL NASCONDERE NON E' LA PROTEZIONE, e le due cose stanno tutte e
+        due. `invisible` toglie di mezzo un bottone «Temu» dagli ordini di
+        ManoMano e BricoBravo, che li' sarebbe solo confusione — ma nasconde,
+        non impedisce. A fermare davvero e' la guardia dentro
+        `action_temu_check_shipment`, che su un ordine non Temu solleva un
+        errore parlante: quella resta, ed e' quella vera.
+
+        Il campo `connector_code` che l'`invisible` legge e' un `related` NON
+        memorizzato dichiarato in `models/temu_order_map.py`: calcolato al
+        volo, nessuna colonna nuova su `centrivo.order.map`.
+    -->
+    <record id="view_integration_order_map_form_temu" model="ir.ui.view">
+        <field name="name">centrivo.order.map.form.temu</field>
+        <field name="model">centrivo.order.map</field>
+        <field name="inherit_id"
+               ref="integrations_core.view_integration_order_map_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//header" position="inside">
+                <!-- Il campo serve solo all'`invisible` qui sotto: la vista
+                     deve poterlo leggere, ma non lo si mostra. -->
+                <field name="connector_code" invisible="1"/>
+                <button name="action_temu_check_shipment" type="object"
+                        string="Rileggi lo stato della spedizione (Temu)"
+                        class="btn-secondary"
+                        invisible="connector_code != 'temu'"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

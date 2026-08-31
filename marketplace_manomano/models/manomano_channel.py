@@ -94,6 +94,18 @@ class CentrivoChannel(models.Model):
                     "consegna e rifiuta l'offerta con l'errore "
                     "«ALL_GRID_NOT_ELIGIBLE_FOR_OFFER».")
 
+    # ⚠️ L'interruttore della guardia sul ritiro di massa, nella stessa forma
+    # di `temu_allow_zero_stock`. Nasce SPENTO ed e' giusto cosi': il caso in
+    # cui serve accenderlo e' raro e voluto (una pulizia decisa da una
+    # persona); il caso in cui protegge e' un tag riconfigurato per sbaglio,
+    # che senza di lui spegnerebbe il catalogo in una passata.
+    manomano_allow_mass_withdraw = fields.Boolean(
+        string="Consenti ritiro di massa",
+        help="Normalmente il giro si ferma se dovrebbe mandare a zero meta' o "
+             "piu' delle offerte conosciute: quasi sempre significa che il "
+             "criterio dei tag e' cambiato per sbaglio. Attivare solo per una "
+             "pulizia voluta, e rispegnere dopo.")
+
     manomano_invoice_auto = fields.Boolean(
         string="Invia le fatture in automatico", default=False,
         help="Se attivo, alla conferma di una fattura collegata a un ordine "
@@ -145,22 +157,26 @@ class CentrivoChannel(models.Model):
         for channel in self:
             if not channel.active:
                 continue
+            # ⚠️ Il nome si legge ORA, mentre la transazione e' sana: dentro
+            # un gestore d'errore sarebbe una lettura SQL su una transazione
+            # ABORTITA. Vedi `_canale_registra` in integrations_core.
+            nome = channel.name
             try:
-                channel._get_connector().push_offers()
+                # ⚠️ IL SAVEPOINT, e perche' intercettare NON basta: un errore
+                # che viene dal DATABASE lascia la transazione ABORTITA, i
+                # canali successivi non vengono nemmeno provati e il commit
+                # finale diventa un ROLLBACK silenzioso.
+                with self.env.cr.savepoint():
+                    channel._get_connector().push_offers()
             except NotImplementedError:
                 _logger.info(
                     "Il connettore del canale %s non espone push_offers.",
-                    channel.name)
+                    nome)
             except Exception as exc:  # noqa: BLE001 - isolamento per canale
                 _logger.exception(
-                    "push_offers fallito per il canale %s", channel.name)
-                self.env["centrivo.job.log"].create({
-                    "channel_id": channel.id,
-                    "operation": "push_offers",
-                    "result": "error",
-                    "message": str(exc)[:2000],
-                    "company_id": channel.company_id.id,
-                })
+                    "push_offers fallito per il canale %s", nome)
+                self._canale_registra(channel, nome, "push_offers",
+                                      str(exc)[:2000])
         return True
 
     def action_manomano_check_offers(self):
@@ -177,26 +193,24 @@ class CentrivoChannel(models.Model):
                     return self._manomano_notification(
                         "Canale non attivo.", kind="warning")
                 continue
+            nome = channel.name  # letto mentre la transazione e' sana
             try:
-                count = channel._get_connector().check_offers()
+                # ⚠️ Il savepoint per canale: vedi il gemello `push_offers`.
+                with self.env.cr.savepoint():
+                    count = channel._get_connector().check_offers()
             except NotImplementedError:
                 _logger.info(
                     "Il connettore del canale %s non espone check_offers.",
-                    channel.name)
+                    nome)
                 if single:
                     return self._manomano_notification(
                         "Il connettore di questo canale non verifica le "
                         "offerte.", kind="warning")
             except Exception as exc:  # noqa: BLE001 - isolamento per canale
                 _logger.exception(
-                    "check_offers fallito per il canale %s", channel.name)
-                self.env["centrivo.job.log"].create({
-                    "channel_id": channel.id,
-                    "operation": "check_offers",
-                    "result": "error",
-                    "message": str(exc)[:2000],
-                    "company_id": channel.company_id.id,
-                })
+                    "check_offers fallito per il canale %s", nome)
+                self._canale_registra(channel, nome, "check_offers",
+                                      str(exc)[:2000])
                 if single:
                     return self._manomano_notification(
                         "Verifica fallita: %s" % str(exc)[:200], kind="danger")
@@ -251,23 +265,21 @@ class CentrivoChannel(models.Model):
                     return self._manomano_notification(
                         "Canale non attivo.", kind="warning", title=TITLE)
                 continue
+            nome = channel.name  # letto mentre la transazione e' sana
             try:
-                count = channel._get_connector().sync_taxonomy()
+                # ⚠️ Il savepoint per canale: vedi il gemello `push_offers`.
+                with self.env.cr.savepoint():
+                    count = channel._get_connector().sync_taxonomy()
             except NotImplementedError:
-                _logger.info("Canale %s: connettore senza taxonomy.", channel.name)
+                _logger.info("Canale %s: connettore senza taxonomy.", nome)
                 if single:
                     return self._manomano_notification(
                         "Il connettore di questo canale non scarica i campi.",
                         kind="warning", title=TITLE)
             except Exception as exc:  # noqa: BLE001 - isolamento per canale
-                _logger.exception("sync_taxonomy fallito per %s", channel.name)
-                self.env["centrivo.job.log"].create({
-                    "channel_id": channel.id,
-                    "operation": "taxonomy_sync",
-                    "result": "error",
-                    "message": str(exc)[:2000],
-                    "company_id": channel.company_id.id,
-                })
+                _logger.exception("sync_taxonomy fallito per %s", nome)
+                self._canale_registra(channel, nome, "taxonomy_sync",
+                                      str(exc)[:2000])
                 if single:
                     return self._manomano_notification(
                         "Scarico fallito: %s" % str(exc)[:200], kind="danger",
@@ -316,26 +328,26 @@ class CentrivoChannel(models.Model):
                     return self._manomano_feed_notification(
                         "Canale non attivo.", kind="warning")
                 continue
+            nome = channel.name  # letto mentre la transazione e' sana
             connector = channel._get_connector()
             try:
-                rows = connector.generate_product_feed()
+                # ⚠️ Il savepoint per canale: vedi il gemello `push_offers`.
+                # Il connettore si tiene FUORI (serve dopo, per gli avvisi):
+                # e' un oggetto Python, il rollback non lo tocca.
+                with self.env.cr.savepoint():
+                    rows = connector.generate_product_feed()
             except NotImplementedError:
                 _logger.info("Canale %s: connettore senza feed prodotto.",
-                             channel.name)
+                             nome)
                 if single:
                     return self._manomano_feed_notification(
                         "Il connettore di questo canale non genera un feed "
                         "prodotto.", kind="warning")
             except Exception as exc:  # noqa: BLE001 - isolamento per canale
                 _logger.exception("Feed prodotto ManoMano fallito per %s",
-                                  channel.name)
-                self.env["centrivo.job.log"].create({
-                    "channel_id": channel.id,
-                    "operation": "manomano_product_feed",
-                    "result": "error",
-                    "message": str(exc)[:2000],
-                    "company_id": channel.company_id.id,
-                })
+                                  nome)
+                self._canale_registra(channel, nome, "manomano_product_feed",
+                                      str(exc)[:2000])
                 if single:
                     return self._manomano_feed_notification(
                         "Generazione feed fallita: %s" % str(exc)[:200],

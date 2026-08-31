@@ -29,6 +29,7 @@ from odoo.addons.integrations_core.connectors.base import (
     MarketplaceConnector,
     register_connector,
 )
+from odoo.addons.integrations_core.connectors.carrier_resolver import NON_TRADOTTO
 from odoo.addons.integrations_core.connectors.transport import (
     RestTransport,
     TransportError,
@@ -60,6 +61,11 @@ OFFERS_BATCH_PAUSE = 1.0
 # `retry_after` in secondi; loro raccomandano di raddoppiare l'attesa a ogni
 # tentativo e di fermarsi dopo 5. Il tetto per singola attesa evita che un
 # valore assurdo tenga occupato un worker Odoo all'infinito.
+# Sotto questo numero di ritiri la guardia non scatta: togliere il tag a pochi
+# articoli e' un'operazione normale (fine serie, prodotto ritirato). La forma e'
+# quella gia' in casa su Temu (SOGLIA_AZZERAMENTO).
+SOGLIA_RITIRO = 20
+
 RATE_LIMIT_STATUS = 429
 RATE_LIMIT_MAX_RETRIES = 5
 RATE_LIMIT_DEFAULT_WAIT = 30
@@ -237,6 +243,22 @@ class ManoManoConnector(MarketplaceConnector):
     # Selection dinamico di centrivo.carrier.map. Vedi MANOMANO_CARRIERS.
     carrier_codes = MANOMANO_CARRIERS
 
+    # Traduzione corriere dell'anagrafica -> nome ufficiale ManoMano (vedi
+    # MANOMANO_CARRIERS: ManoMano vuole il NOME per esteso, non un codice).
+    # Attenzione a "Fedex": nella loro lista ufficiale è scritto così, senza la
+    # E maiuscola.
+    carrier_brand_codes = {
+        "brt": "BRT",
+        "gls": "GLS",
+        "poste": "Poste Italiane",
+        "sda": "SDA",
+        "dhl": "DHL",
+        "ups": "UPS",
+        "tnt": "TNT",
+        "dpd": "DPD",
+        "fedex": "Fedex",
+    }
+
     def __init__(self, channel):
         super().__init__(channel)
         base_url = self._resolve_base_url(channel)
@@ -340,9 +362,18 @@ class ManoManoConnector(MarketplaceConnector):
         # senza che nessuno sappia perché.
         nota_scarti = self._skip_note(skipped)
         if not rows:
-            self._log_offers("skip",
-                             "Nessuna offerta valida da inviare (prodotti senza "
-                             "default_code, prezzo o peso)." + nota_scarti)
+            # ⚠️ NON si esce piu' di qui, ed e' il difetto trovato dentro Odoo
+            # il 2026-08-29. «Nessuna riga da mandare» e' esattamente il caso
+            # in cui e' stato tolto il tag a TUTTO: uscendo, il ritiro non
+            # partiva mai — cioe' proprio nel caso per cui esiste. Le offerte
+            # restavano vive su ManoMano, che e' come sono nate le 4.117.
+            # La guardia sul ritiro di massa protegge da un tag sbagliato:
+            # ferma il giro e mostra le righe invece di spegnerle.
+            nota_ritiri = self._ritira_senza_tag(channel, contracts, set())
+            self._log_offers(
+                "skip",
+                "Nessuna offerta valida da inviare (prodotti senza "
+                "default_code, prezzo o peso)." + nota_scarti + nota_ritiri)
             return 0
 
         items = [self._build_offer_item(r) for r in rows]
@@ -352,17 +383,39 @@ class ManoManoConnector(MarketplaceConnector):
         errors = 0
         all_codes = []
         for contract in contracts:
-            for index, batch in enumerate(self._chunks(items, OFFERS_BATCH_SIZE)):
+            # ⚠️ Si cicla sulle RIGHE, non sugli item gia' costruiti: la
+            # memoria ha bisogno di prezzo, peso e tempi, che nel messaggio
+            # verso ManoMano sono annidati («pricing.price_vat_included»,
+            # «shipping.display_weight»...) e da li' si leggerebbero come zero.
+            # Misurato dentro Odoo il 2026-08-29: il ritiro sarebbe partito con
+            # peso zero, che ManoMano rifiuta — cioe' avrebbe fallito proprio
+            # sulle righe per cui esiste.
+            for index, batch_rows in enumerate(
+                    self._chunks(rows, OFFERS_BATCH_SIZE)):
                 # Pausa PRIMA di ogni blocco tranne il primo: con blocchi da 20
                 # le chiamate sono tante e ravvicinate, e Cloudflare blocca le
                 # raffiche. Meglio un invio più lento che un invio respinto.
                 if index and OFFERS_BATCH_PAUSE:
                     time.sleep(OFFERS_BATCH_PAUSE)
-                accepted, codes = self._send_offers_batch(batch, contract)
+                batch = [self._build_offer_item(r) for r in batch_rows]
+                accepted, codes, rifiutati = self._send_offers_batch(
+                    batch, contract)
                 total_sent += accepted
                 all_codes.extend(codes)
                 if accepted < len(batch):
                     errors += 1
+                # ⚠️ La memoria si scrive DOPO, e solo delle righe accettate.
+                # Scriverla prima direbbe «mandato» di qualcosa che non è
+                # partito, e al giro dopo quella riga verrebbe ritirata: si
+                # manderebbe uno zero per un'offerta che non esiste.
+                self._memoria_registra(batch_rows, contract, rifiutati)
+
+        # --- Il ritiro di chi ha perso il tag ------------------------------
+        # ⚠️ Sta QUI, dopo l'invio e dentro la funzione che è già passata dalla
+        # guardia del tag vuoto (in cima): se girasse prima di quella guardia,
+        # un canale rimasto senza tag spegnerebbe l'intero catalogo.
+        nota_ritiri = self._ritira_senza_tag(
+            channel, contracts, {r["sku"] for r in rows})
 
         # Riepilogo dei motivi: con migliaia di offerte l'elenco per SKU è
         # illeggibile, e senza questa riga non si capisce se il problema sia
@@ -377,8 +430,208 @@ class ManoManoConnector(MarketplaceConnector):
             "Offerte ManoMano: %s righe valide, ACCETTATE %s (contract: %s), "
             "blocchi con rifiuti %s.%s%s" % (
                 len(items), total_sent, ", ".join(contracts), errors,
-                nota_rifiuti, nota_scarti))
+                nota_rifiuti, nota_scarti) + nota_ritiri)
         return total_sent
+
+    # ==================================================================
+    # LA MEMORIA E IL RITIRO
+    # Senza memoria il ritiro non e' scrivibile: `push_offers` ricostruisce
+    # l'elenco dal tag a ogni giro, quindi chi perde il tag SPARISCE e non c'e'
+    # nessun posto da cui pescarlo. Non si puo' azzerare cio' che non ci si
+    # ricorda di aver mandato.
+    # ==================================================================
+    def _memoria(self):
+        """Il registro delle offerte mandate, sempre in `sudo()`.
+
+        ⚠️ Il modello e' in sola lettura per gli utenti normali (come
+        `kaufland.offer`): lo stato di quelle righe decide cosa torna in vendita
+        su un marketplace vero. Ogni accesso da qui passa da `sudo()`.
+        """
+        return self.env["centrivo.manomano.offer"].sudo()
+
+    def _memoria_registra(self, items, contract, rifiutati):
+        """Segna cosa e' stato mandato davvero, per (canale, sku, contract).
+
+        ⚠️ Si chiama DOPO l'invio e si salta cio' che ManoMano ha rifiutato:
+        una riga segnata «mandata» che non e' partita verrebbe ritirata al giro
+        dopo, e si manderebbe uno zero per un'offerta che non esiste.
+        """
+        scartati = set(rifiutati or [])
+        Memoria = self._memoria()
+        adesso = fields.Datetime.now()
+        for item in items:
+            sku = item.get("sku")
+            if not sku or sku in scartati:
+                continue
+            # ⚠️ Savepoint per unita' di lavoro: una riga che rompe non si porta
+            # via il giro ne' le righe gia' scritte. E' la cura del 2026-08-27.
+            try:
+                with self.env.cr.savepoint():
+                    valori = {
+                        "ultimo_prezzo": item.get("price") or 0.0,
+                        "ultima_quantita": item.get("stock") or 0,
+                        "ultimo_peso": item.get("weight") or 0.0,
+                        "ultimo_tempo_min": item.get("shipping_time_min") or 0,
+                        "ultimo_tempo_max": item.get("shipping_time_max") or 0,
+                        "stato": "attiva",
+                        "mandata_il": adesso,
+                        "ultimo_esito": "ok",
+                        "ultimo_messaggio": False,
+                    }
+                    riga = Memoria.search(
+                        [("channel_id", "=", self.channel.id),
+                         ("sku", "=", sku),
+                         ("contract", "=", contract)], limit=1)
+                    if riga:
+                        # ⚠️ Anche una riga «ritirata» torna attiva: e' il caso
+                        # del tag rimesso, e su ManoMano l'offerta riparte da
+                        # sola col giro dopo (verificato il 2026-08-25).
+                        riga.write(valori)
+                    else:
+                        prodotto = self.env["product.product"].sudo().search(
+                            [("default_code", "=", sku)], limit=1)
+                        valori.update({
+                            "channel_id": self.channel.id,
+                            "sku": sku,
+                            "contract": contract,
+                            "product_id": prodotto.id if prodotto else False,
+                        })
+                        Memoria.create(valori)
+            except Exception as errore:  # noqa: BLE001
+                _logger.warning(
+                    "ManoMano: memoria non scritta per lo SKU %s (contract "
+                    "%s): %s", sku, contract, errore)
+
+    def _ritira_senza_tag(self, channel, contracts, skus_taggati):
+        """Manda a zero le offerte dei prodotti che hanno perso il tag.
+
+        Ritorna una frase da appendere al log del giro (vuota se non c'e'
+        niente da fare).
+
+        ⚠️ Va chiamato SOLO da dentro `push_offers`, che in cima si e' gia'
+        fermato se il canale non ha nessun tag. Chiamato prima di quella
+        guardia, un canale mal configurato spegnerebbe l'intero catalogo.
+        """
+        Memoria = self._memoria()
+        vive = Memoria.search([
+            ("channel_id", "=", channel.id),
+            ("contract", "in", list(contracts)),
+            ("stato", "in", ("attiva", "da_ritirare")),
+        ])
+        da_ritirare = vive.filtered(lambda r: r.sku not in skus_taggati)
+        if not da_ritirare:
+            return ""
+
+        # Si marcano SEMPRE, anche quando la guardia ferma l'invio: cosi' il
+        # filtro «Da ritirare» le mostra, invece di lasciarle invisibili.
+        da_ritirare.write({"stato": "da_ritirare"})
+
+        # ⚠️ LA GUARDIA. Il caso peggiore non e' un guasto, e' un errore umano:
+        # un tag riconfigurato per sbaglio fa risultare «senza tag» TUTTO, e
+        # senza questa riga una sola passata spegnerebbe il catalogo. Le righe
+        # restano marcate e visibili: si guarda, e se il ritiro e' voluto si
+        # accende l'interruttore sul canale.
+        if self._e_ritiro_di_massa(len(da_ritirare), len(vive),
+                                   channel.manomano_allow_mass_withdraw):
+            messaggio = (
+                "FERMATO: %s offerte su %s sarebbero ritirate (mandate a zero). "
+                "Se davvero e' stato tolto il tag a tutte queste, e' un caso; "
+                "molto piu' probabile e' che il criterio dei tag sul canale sia "
+                "cambiato per sbaglio. Le righe sono marcate «Da ritirare» e si "
+                "vedono nel filtro omonimo. Se il ritiro e' voluto, attiva "
+                "«Consenti ritiro di massa» sul canale." % (
+                    len(da_ritirare), len(vive)))
+            self._log_offers("error", messaggio)
+            return " " + messaggio
+
+        ritirate, falliti = 0, 0
+        for contract in contracts:
+            righe = da_ritirare.filtered(lambda r: r.contract == contract)
+            if not righe:
+                continue
+            for indice, blocco in enumerate(
+                    self._chunks(list(righe), OFFERS_BATCH_SIZE)):
+                if indice and OFFERS_BATCH_PAUSE:
+                    time.sleep(OFFERS_BATCH_PAUSE)
+                items = [self._item_di_ritiro(r, channel) for r in blocco]
+                accettate, codici, rifiutati = self._send_offers_batch(
+                    items, contract)
+                scartati = set(rifiutati or [])
+                adesso = fields.Datetime.now()
+                for riga in blocco:
+                    try:
+                        with self.env.cr.savepoint():
+                            if riga.sku in scartati:
+                                falliti += 1
+                                # ⚠️ Resta «da_ritirare»: si riprova al giro
+                                # dopo. Segnarla chiusa lascerebbe un'offerta
+                                # viva che nessun giro guardera' mai piu' —
+                                # cioe' il difetto originale, ricreato dal suo
+                                # stesso rimedio.
+                                riga.write({
+                                    "ultimo_esito": (
+                                        "incerto"
+                                        if "ERRORE_DI_RETE" in (codici or [])
+                                        else "errore"),
+                                    "ultimo_messaggio": (
+                                        "Ritiro non riuscito: %s"
+                                        % self._summarize_codes(codici)),
+                                })
+                            else:
+                                ritirate += 1
+                                riga.write({
+                                    "stato": "ritirata",
+                                    "ultima_quantita": 0,
+                                    "ritirata_il": adesso,
+                                    "ultimo_esito": "ok",
+                                    "ultimo_messaggio": False,
+                                })
+                    except Exception as errore:  # noqa: BLE001
+                        _logger.warning(
+                            "ManoMano: esito del ritiro non scritto per lo SKU "
+                            "%s: %s", riga.sku, errore)
+
+        frase = " Ritirate (mandate a zero) %s offerte" % ritirate
+        if falliti:
+            frase += ", %s non riuscite (si riprovano al giro dopo)" % falliti
+        return frase + "."
+
+    @staticmethod
+    def _e_ritiro_di_massa(quanti_ritiri, quante_vive, consentito):
+        """La decisione della guardia, isolata perche' sia provabile da sola.
+
+        Sta qui e non dentro il giro per una ragione precisa: e' la riga che
+        separa «una pulizia normale» da «ho appena spento il catalogo», e una
+        regola che si puo' provare solo installando Odoo non si prova mai.
+
+        Scatta quando i ritiri sono **tanti in assoluto** (SOGLIA_RITIRO) **e**
+        sono **almeno meta'** di cio' che conosciamo. Servono entrambe: la sola
+        proporzione fermerebbe un canale con tre offerte in tutto; il solo
+        numero fermerebbe una pulizia legittima su un catalogo enorme.
+        """
+        if consentito:
+            return False
+        if quanti_ritiri < SOGLIA_RITIRO:
+            return False
+        return quanti_ritiri >= quante_vive * 0.5
+
+    def _item_di_ritiro(self, riga, channel):
+        """La stessa riga gia' mandata, con la sola quantita' a zero.
+
+        ⚠️ Prezzo, peso e tempi vengono dalla MEMORIA, non dal prodotto: al
+        momento del ritiro il prodotto in Odoo puo' essere archiviato o
+        cancellato, e ManoMano rifiuta un'offerta con peso zero. Sarebbe il
+        modo perfetto di fallire proprio sulle righe che contano di piu'.
+        """
+        return self._build_offer_item({
+            "sku": riga.sku,
+            "price": riga.ultimo_prezzo,
+            "stock": 0,
+            "weight": riga.ultimo_peso,
+            "shipping_time_min": riga.ultimo_tempo_min,
+            "shipping_time_max": riga.ultimo_tempo_max,
+            "carrier_grid_name": channel.manomano_carrier_grid_name,
+        })
 
     @staticmethod
     def _skip_note(skipped):
@@ -586,7 +839,10 @@ class ManoManoConnector(MarketplaceConnector):
                              "Invio offerte (contract %s) fallito (rete): %s"
                              % (contract, exc),
                              payload=payload)
-            return 0, ["ERRORE_DI_RETE"] * len(items)
+            # ⚠️ Errore di RETE: non si sa se ManoMano abbia ricevuto. Non si
+            # scrive niente in memoria — né come mandata né come ritirata.
+            return (0, ["ERRORE_DI_RETE"] * len(items),
+                    [i.get("sku") for i in items])
 
         rejected = self._rejected_skus(response)
         codes = self._rejection_codes(response)
@@ -607,7 +863,11 @@ class ManoManoConnector(MarketplaceConnector):
                              payload=payload)
             # Chiamata respinta: non si dà per buona NESSUNA offerta del blocco.
             # Meglio sottostimare che dichiarare a scaffale roba che non c'è.
-            return 0, (codes or ["HTTP_%s" % response.status_code] * len(items))
+            # ⚠️ Terzo valore: gli SKU da NON dare per mandati. Qui la chiamata
+            # è stata respinta in blocco, quindi sono tutti.
+            return (0,
+                    (codes or ["HTTP_%s" % response.status_code] * len(items)),
+                    [i.get("sku") for i in items])
 
         if rejected:
             # Chiamata 2xx ma singoli SKU rifiutati: senza questo log l'esito
@@ -619,7 +879,7 @@ class ManoManoConnector(MarketplaceConnector):
                                 self._summarize_codes(codes),
                                 "; ".join(rejected)),
                              payload=payload)
-        return max(0, len(items) - len(rejected)), codes
+        return max(0, len(items) - len(rejected)), codes, list(rejected)
 
     @staticmethod
     def _rejected_skus(response):
@@ -1196,13 +1456,29 @@ class ManoManoConnector(MarketplaceConnector):
         ])
         recovered = 0
         for order_map in pending:
+            # ⚠️ Il codice esterno si legge QUI, mentre la transazione e'
+            # certamente sana: dentro il gestore potrebbe essere ABORTITA, e
+            # li' anche solo LEGGERE un campo esplode — cioe' proprio nel
+            # caso per cui il gestore e' stato scritto.
+            esterno = order_map.external_id
+            preso = False
             try:
-                if self.accept_order(order_map.external_id, order_map=order_map):
-                    recovered += 1
+                # ⚠️ IL SAVEPOINT PER ORDINE. Il gestore c'era gia' e non
+                # bastava: catturare un errore del DATABASE in Python non
+                # salva la transazione, e da li' anche gli ordini successivi
+                # cadono — insieme al pull che chiama questa ripresa per
+                # primo.
+                with self.env.cr.savepoint():
+                    preso = bool(self.accept_order(esterno,
+                                                   order_map=order_map))
             except Exception as exc:  # noqa: BLE001 - un ordine non blocca il batch
                 _logger.warning(
                     "ManoMano retry_pending_acquired: ordine #%s fallito, "
-                    "proseguo con gli altri: %s", order_map.external_id, exc)
+                    "proseguo con gli altri: %s", esterno, exc)
+                continue
+            # ⚠️ Il contatore FUORI dal savepoint.
+            if preso:
+                recovered += 1
         return recovered
 
     def _log_op(self, operation, external_id, result, message):
@@ -1484,14 +1760,42 @@ class ManoManoConnector(MarketplaceConnector):
                 pages = (body.get("pagination") or {}).get("pages") or 1
                 total_received += len(data)
                 for external_order in data:
+                    # ⚠️ Il verdetto sta in una variabile PYTHON, non in un
+                    # contatore: le variabili il rollback non le tocca, i
+                    # contatori invece sopravviverebbero al rollback dicendo
+                    # di aver importato cio' che e' tornato indietro.
+                    ok = False
                     try:
-                        ok = self.import_order(external_order)
+                        # ⚠️ IL SAVEPOINT PER ORDINE, e perche' intercettare
+                        # l'eccezione NON basta: un errore che viene dal
+                        # DATABASE lascia la transazione ABORTITA. Da li' in
+                        # poi ogni ordine successivo cade per un guasto che
+                        # non e' suo, `last_pull` e la riga finale di registro
+                        # non si scrivono, e il commit della richiesta diventa
+                        # un ROLLBACK silenzioso che si porta via gli ordini
+                        # gia' importati — mentre i contatori dicono
+                        # «importati N».
+                        with self.env.cr.savepoint():
+                            ok = bool(self.import_order(external_order))
                     except Exception as exc:  # noqa: BLE001
                         ok = False
+                        # Il codice esterno viene dal dizionario ricevuto, non
+                        # da un record: leggerlo qui non tocca il database.
                         oid = self._mm_order_id(external_order)
                         if oid:
-                            self._record_order_error(
-                                oid, "Errore import ordine: %s" % exc)
+                            # ⚠️ La traccia passa comunque da `_al_riparo`: il
+                            # flush d'ingresso di un savepoint PUO' rompersi a
+                            # sua volta, e li' la transazione e' abortita
+                            # davvero. Un `False` e' l'unica traccia che la
+                            # scrittura di servizio non c'e' stata.
+                            if not self._al_riparo(
+                                    self._record_order_error, oid,
+                                    "Errore import ordine: %s" % exc):
+                                _logger.error(
+                                    "ManoMano: non si e' potuto registrare "
+                                    "l'errore dell'ordine %s", oid)
+                    # ⚠️ SOLO ADESSO i contatori, e FUORI dal savepoint: non
+                    # si conta cio' che il rollback si e' portato via.
                     if ok:
                         total_imported += 1
                     else:
@@ -1579,10 +1883,17 @@ class ManoManoConnector(MarketplaceConnector):
         carrier_map = self.env["centrivo.carrier.map"].resolve_external_code(
             self.channel, source_model, source_res_id, self.channel.company_id)
         if not carrier_map:
-            self._log_op("push_shipment", external_id, "error",
-                         "Push #%s: nessun mapping per il vettore '%s'. "
-                         "Aggiungi la riga in Integrations → Mapping Corrieri."
-                         % (external_id, source_display))
+            if carrier_map.failure_reason == NON_TRADOTTO:
+                messaggio = ("Push #%s: il corriere %s non ha una traduzione "
+                             "per questo canale. Verifica la Copertura corrieri "
+                             "o aggiungi un'eccezione."
+                             % (external_id, carrier_map.brand_name or "?"))
+            else:
+                messaggio = ("Push #%s: il vettore '%s' non è collegato a "
+                             "nessun corriere. Aggiungi la riga in "
+                             "Integrations → Vettori."
+                             % (external_id, source_display))
+            self._log_op("push_shipment", external_id, "error", messaggio)
             return False
         tracking_number = (picking.carrier_tracking_ref or "").strip()
         template = carrier_map.tracking_url_template or ""

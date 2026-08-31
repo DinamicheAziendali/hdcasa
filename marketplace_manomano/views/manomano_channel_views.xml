@@ -35,6 +35,13 @@
                             <field name="manomano_transit_days_min"/>
                             <field name="manomano_transit_days_max"/>
                         </group>
+                        <group string="Ritiro delle offerte">
+                            <!-- Nasce spento. Si accende solo per una pulizia
+                                 voluta, e si rispegne dopo: e' la guardia che
+                                 impedisce a un tag riconfigurato per sbaglio
+                                 di spegnere il catalogo in una passata. -->
+                            <field name="manomano_allow_mass_withdraw"/>
+                        </group>
                         <group string="Fatture">
                             <field name="manomano_invoice_auto"/>
                         </group>

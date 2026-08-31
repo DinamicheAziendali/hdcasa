@@ -23,11 +23,29 @@
               action="action_integration_sku_map"
               sequence="30"/>
 
-    <menuitem id="menu_integration_carrier_map"
-              name="Mapping Corrieri"
+    <menuitem id="menu_carrier_brand"
+              name="Corrieri"
               parent="menu_integrations_root"
-              action="action_integration_carrier_map"
-              sequence="35"/>
+              action="action_carrier_brand"
+              sequence="32"/>
+
+    <menuitem id="menu_carrier_source"
+              name="Vettori"
+              parent="menu_integrations_root"
+              action="action_carrier_source"
+              sequence="33"/>
+
+    <menuitem id="menu_carrier_override"
+              name="Eccezioni corrieri"
+              parent="menu_integrations_root"
+              action="action_carrier_override"
+              sequence="34"/>
+
+    <menuitem id="menu_carrier_coverage"
+              name="Copertura corrieri"
+              parent="menu_integrations_root"
+              action="action_carrier_coverage"
+              sequence="36"/>
 
     <menuitem id="menu_integration_job_log"
               name="Log operazioni"

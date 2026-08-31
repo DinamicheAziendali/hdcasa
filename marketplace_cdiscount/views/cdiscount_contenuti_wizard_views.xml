@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <!-- La vista della procedura. L'azione che la apre e' in fondo a questo
+       file (Compito 12); la voce di menu che la richiama sta in
+       `views/cdiscount_menus.xml`.
+       ⚠️ Fino al Compito 12 questa procedura NON era raggiungibile da
+       nessuna parte dell'interfaccia: la vista c'era, il modello pure, e
+       nessuna azione le apriva. Chi togliesse l'azione in fondo
+       rimetterebbe il modulo esattamente in quello stato, e non se ne
+       accorgerebbe nessuno finche' qualcuno non cerca dove si caricano i
+       contenuti. -->
+  <record id="view_cdiscount_contenuti_wizard_form" model="ir.ui.view">
+    <field name="name">cdiscount.contenuti.wizard.form</field>
+    <field name="model">cdiscount.contenuti.wizard</field>
+    <field name="arch" type="xml">
+      <form string="Carica il file dei contenuti">
+        <group>
+          <field name="channel_id" options="{'no_create': True}"/>
+          <field name="nome_file" invisible="1"/>
+          <field name="esito_mostrato" invisible="1"/>
+          <field name="file_contenuti" filename="nome_file" widget="binary"/>
+        </group>
+        <p class="text-muted">
+          Il file ha quattro colonne separate dal <b>punto e virgola</b> —
+          codice, titolo, descrizione, immagini — in qualunque ordine, e va
+          salvato in <b>UTF-8</b>: salvato altrimenti viene rifiutato invece
+          di entrare con gli accenti francesi storpiati. Nella colonna
+          «immagini» gli indirizzi si separano con la <b>virgola</b>, e il
+          primo e' la copertina. I testi vanno scritti <b>in francese</b>:
+          questa procedura non traduce niente, dice solo chi manca.
+        </p>
+        <!-- ⚠️ QUESTO RIQUADRO E' IL MOTIVO PER CUI LA FINESTRA SI RIAPRE
+             invece di chiudersi. Gli scarti vanno guardati adesso, con il
+             foglio di calcolo di fianco: e' l'unico momento in cui chi ha
+             caricato il file puo' correggerlo. Una notifica che sparisce da
+             sola, o una riga di registro che nessuno apre, varrebbero
+             quanto il silenzio. -->
+        <group string="Esito del caricamento"
+               invisible="not esito_mostrato">
+          <!-- ⚠️ `colspan="2"` NON e' un doppione di `nolabel`: un
+               `<group>` di Odoo e' una tabella a DUE colonne, e `nolabel`
+               toglie l'etichetta ma lascia la casella nella meta' destra.
+               Con righe da duecento caratteri e fino a cinquecento scarti la
+               lettura si accartoccia in mezza finestra, e uno scarto che non
+               si riesce a leggere vale quanto uno scarto non mostrato. -->
+          <field name="esito" nolabel="1" colspan="2" readonly="1"/>
+        </group>
+        <footer>
+          <button name="action_carica" type="object"
+                  string="Carica i contenuti" class="btn-primary"/>
+          <button string="Chiudi" class="btn-secondary" special="cancel"/>
+        </footer>
+      </form>
+    </field>
+  </record>
+
+  <!-- ⚠️ `target="new"` NON e' un dettaglio di stile: e' cio' che rende
+       questa una FINESTRA DI DIALOGO invece di una pagina. Il `<footer>`
+       della vista qui sopra — coi due bottoni «Carica i contenuti» e
+       «Chiudi» — viene reso da Odoo solo in un dialogo; a tutto schermo i
+       bottoni finirebbero in fondo alla pagina, fuori dal posto in cui una
+       procedura guidata li fa cercare.
+       ⚠️ E la procedura si RIAPRE dopo il caricamento, mostrando gli scarti:
+       `action_carica` restituisce un'azione che rimette a video lo stesso
+       record (vedi `models/cdiscount_contenuti_wizard.py`). E' l'unico
+       momento in cui chi ha caricato il file puo' correggerlo, col foglio di
+       calcolo di fianco. -->
+  <record id="action_cdiscount_contenuti_wizard" model="ir.actions.act_window">
+    <field name="name">Carica i contenuti Cdiscount</field>
+    <field name="res_model">cdiscount.contenuti.wizard</field>
+    <field name="view_mode">form</field>
+    <field name="view_id" ref="view_cdiscount_contenuti_wizard_form"/>
+    <field name="target">new</field>
+  </record>
+</odoo>

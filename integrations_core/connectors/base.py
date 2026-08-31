@@ -62,11 +62,205 @@ class MarketplaceConnector(object):
     # mapping corrieri (centrivo.carrier.map) interroga questa lista per
     # popolare il Selection dinamico, SENZA hardcodare nulla nel modello.
     carrier_codes = []
+    # Traduzione "corriere dell'anagrafica -> codice atteso dal marketplace".
+    # Chiave = centrivo.carrier.brand.code (brt, gls, poste, ...), valore = un
+    # codice che DEVE comparire in carrier_codes. La mantiene chi scrive il
+    # connettore: l'utente non la vede e non la configura.
+    carrier_brand_codes = {}
 
     def __init__(self, channel):
         # `channel` è un recordset centrivo.channel (singolo record).
         self.channel = channel
         self.env = channel.env
+
+    # ------------------------------------------------------------------
+    # Prezzo e giacenza — validi per tutti i connettori
+    # ------------------------------------------------------------------
+    # ⚠️ Questi due vivono qui perche' erano gia' scritti due volte in
+    # ManoMano e in BricoBravo, e Kaufland sarebbe stata la terza copia.
+    # Le due copie NON sono identiche alla lettera: differiscono nelle
+    # docstring e nel testo di un warning (BricoBravo nomina il listino,
+    # ManoMano no). Verificato confrontando l'AST senza docstring: a parita'
+    # di input restituiscono gli stessi valori, l'unica differenza e' cosa
+    # finisce nel log. Qui e' gia' stata portata la versione BricoBravo, la
+    # piu' informativa, cosi' togliere i duplicati sara' una cancellazione
+    # pura senza perdite di diagnostica.
+    # Le due copie restano dove sono (una sottoclasse vince sulla base,
+    # quindi nulla cambia per loro): toglierle e' un seguito a parte.
+    def _pricelist_price(self, pricelist, product):
+        """Prezzo unitario dal listino (API pubblica 18.0). None se assente."""
+        if not pricelist:
+            return None
+        try:
+            price = pricelist._get_product_price(product, 1.0)
+        except Exception as exc:  # noqa: BLE001 - robustezza per singolo prodotto
+            # Si usa pricelist.id e non display_name: se a rompersi e' proprio
+            # il listino (record cancellato -> MissingError), leggerne il nome
+            # qui dentro solleverebbe una seconda eccezione che sfuggirebbe
+            # all'except. L'id e' gia' in memoria e non puo' fallire.
+            _logger.warning("Prezzo non calcolabile per %s su listino id=%s: %s",
+                            product.display_name, pricelist.id, exc)
+            return None
+        return price if isinstance(price, (int, float)) else None
+
+    def _available_quantity(self, product, channel):
+        """Quantità secondo channel.stock_quantity_type e stock_scope."""
+        field_name = channel.stock_quantity_type or "free_qty"
+        if channel.stock_scope == "warehouses" and channel.warehouse_ids:
+            total = 0.0
+            for warehouse in channel.warehouse_ids:
+                total += getattr(
+                    product.with_context(warehouse=warehouse.id), field_name)
+            return total
+        return getattr(product, field_name)
+
+    # ------------------------------------------------------------------
+    # Rete e transazioni — validi per tutti i connettori
+    # ------------------------------------------------------------------
+    # ⚠️ Questi attrezzi nascono in marketplace_kaufland, dove sono costati
+    # quattro giri di correzioni. Stanno qui perche' Cdiscount li usa uguali
+    # e la terza copia sarebbe il difetto che il repo ha gia' rifiutato una
+    # volta. Kaufland tiene i suoi (la sottoclasse vince sulla base), quindi
+    # il suo comportamento non cambia: toglierli di la' e' un seguito a
+    # parte, non parte di questo lavoro.
+
+    # Il codice PostgreSQL di «riga gia' bloccata da un altro».
+    LOCK_OCCUPATO = "55P03"
+
+    @staticmethod
+    def _motivo_stato(stato, messaggio):
+        """Il motivo di un rifiuto, con lo stato HTTP davanti.
+
+        ⚠️ Senza il prefisso, un rifiuto a corpo vuoto lascia un motivo
+        VUOTO: nel registro si legge «Motivi: 1 × » e lo stato non compare
+        da nessuna parte. E' informazione che abbiamo gia' in mano, e serve
+        anche a distinguere un 400 (colpa del dato) da un 502 (colpa del
+        trasporto, ed esito IGNOTO).
+
+        ⚠️ E il ripiego «nessun dettaglio» NON e' decorativo: i motivi
+        vengono raggruppati e contati, e due connettori che formattano lo
+        stesso rifiuto in due modi non lo raggrupperebbero mai insieme. La
+        forma e' identica a quella di Kaufland, cosi' il giorno in cui la
+        sua copia si toglie sara' una cancellazione pura, senza perdite.
+
+        Kaufland ha due metodi, `_motivo_stato` e `_motivo_http`; qui ce n'e'
+        uno solo, ed e' giusto cosi': chi arriva da Kaufland cercando
+        `_motivo_http` non lo trova, perche' qui `_causa_incerta` chiama
+        direttamente `_motivo_stato`.
+        """
+        dettaglio = (messaggio or "").strip()
+        return "HTTP %s: %s" % (stato, dettaglio or "nessun dettaglio")
+
+    def _causa_incerta(self, risposta):
+        """Perche' di questa risposta non si puo' dire se il lavoro sia
+        arrivato. Restituisce il motivo, oppure None se la risposta e' un
+        verdetto certo.
+
+        `risposta` deve esporre `.stato` (intero: lo stato HTTP, oppure `0`
+        quando non e' arrivata risposta) e `.messaggio` (testo, eventualmente
+        vuoto). NON e' il `TransportResponse` di transport.py (quello espone
+        `status_code`, non `stato`): ogni connettore avvolge il trasporto
+        nella propria classe risposta, come fa `RispostaKaufland`, e questo
+        metodo lavora su quella.
+
+        ⚠️ Due casi, e il secondo e' quello che si dimentica:
+
+        - stato `0`: il trasporto non ha ricevuto risposta (rete caduta,
+          tempo scaduto). La richiesta puo' essere arrivata lo stesso.
+        - **stato 5xx**: 500, 502, 503, 504. Vuol dire ESATTAMENTE la stessa
+          cosa. Trattarlo come un rifiuto certo fa proseguire il giro e
+          invita implicitamente a RIPROVARE — e un riprovo cieco duplica il
+          lavoro. Qui il trasporto sta dietro il proxy Traefik di Coolify:
+          i 502 e i 504 non sono un'ipotesi di scuola.
+        """
+        try:
+            stato = int(risposta.stato)
+        except (TypeError, ValueError):
+            # Uno stato che non e' un numero e' gia' di per se' un esito
+            # ignoto: si tratta come lo zero, non si lascia esplodere il
+            # confronto d'ordine qui sotto.
+            stato = 0
+        if stato == 0:
+            return "la risposta si è persa per strada (%s)" % (
+                (risposta.messaggio or "").strip() or "nessun dettaglio")
+        if stato >= 500:
+            return ("il marketplace ha risposto %s, cioè un guasto del suo "
+                    "lato o del proxy che gli sta davanti"
+                    % self._motivo_stato(stato, risposta.messaggio))
+        return None
+
+    def _al_riparo(self, funzione, *argomenti, **parole):
+        """Esegue una scrittura dentro un savepoint. Rende True se e' andata.
+
+        ⚠️ Catturare un errore del database in Python NON salva la
+        transazione: PostgreSQL la mette in stato ABORTITO, da li' in poi
+        ogni istruzione fallisce, e il commit finale della richiesta diventa
+        un ROLLBACK silenzioso. Il savepoint e' l'unica cosa che la rimette
+        in piedi. Serve a scrivere una traccia quando si e' gia' dentro un
+        guasto.
+
+        ⚠️ E siccome si e' GIA' dentro un guasto, non c'e' niente da
+        salvare rilanciando: inghiotte tutto — compresi gli errori di
+        concorrenza (40001, deadlock 40P01) e i rifiuti di regola di
+        business, cosa che altrove in questo file si evita di proposito
+        (vedi la docstring di `_prendi_il_turno`, piu' sotto in questa
+        stessa classe). Conseguenza: il valore di ritorno va letto, perche'
+        un `False` e' l'unica traccia che la scrittura di servizio non e'
+        avvenuta.
+        """
+        try:
+            with self.env.cr.savepoint():
+                funzione(*argomenti, **parole)
+            return True
+        except Exception:  # noqa: BLE001
+            _logger.exception("Scrittura di servizio fallita sul canale %s",
+                              self.channel.id)
+            return False
+
+    def _prendi_il_turno(self, descrizione):
+        """Un giro per volta su questo canale, o si spiega perche' no.
+
+        ⚠️ Senza, due giri sovrapposti leggono lo stesso insieme e fanno lo
+        stesso lavoro due volte sul marketplace. E un giro che dura decine di
+        secondi senza ritorno a video invita al secondo clic: non e' uno
+        scenario di laboratorio.
+
+        `NOWAIT` e non un'attesa: un'attesa finirebbe uccisa dal worker.
+
+        ⚠️ IL SAVEPOINT NON E' DECORATIVO: un'istruzione SQL fallita lascia
+        la transazione ABORTITA, e da li' in poi perfino leggere
+        `display_name` per comporre il messaggio esploderebbe con un
+        `InFailedSqlTransaction` grezzo al posto della UserError chiara.
+
+        ⚠️ E NON OGNI GUASTO E' «UN ALTRO GIRO IN CORSO»: un errore di
+        serializzazione (40001) o un deadlock (40P01) sono altra cosa, e
+        tradurli cosi' direbbe il falso sopprimendo il ritentativo che Odoo
+        fa da solo. Si lascia risalire tutto cio' che non e' `55P03`.
+
+        ⚠️ Si logga PRIMA di sollevare: la UserError la vede solo chi ha
+        cliccato, in quel momento. Senza il log, un turno rifiutato non
+        lascia traccia nel registro del worker e chi lo rilegge dopo non sa
+        che e' successo.
+        """
+        from odoo.exceptions import UserError
+        try:
+            with self.env.cr.savepoint():
+                # Il nome della tabella viene dal modello, non scritto a mano.
+                self.env.cr.execute(  # noqa: S608 - `_table` e' interno
+                    "SELECT id FROM %s WHERE id = %%s FOR UPDATE NOWAIT"
+                    % self.channel._table, (self.channel.id,))
+        except Exception as errore:  # noqa: BLE001
+            if getattr(errore, "pgcode", None) != self.LOCK_OCCUPATO:
+                raise
+            _logger.warning(
+                "Giro «%s» sul canale %s: turno non disponibile — %s",
+                descrizione, self.channel.display_name, errore)
+            raise UserError(
+                "Un altro giro (%s) è già in corso su questo canale. Non se "
+                "ne avvia un secondo: due giri sovrapposti leggerebbero le "
+                "stesse righe e rifarebbero lo stesso lavoro due volte sul "
+                "marketplace. Attendere che il primo finisca e riprovare."
+                % descrizione)
 
     # ------------------------------------------------------------------
     # Helpers del registro
@@ -127,6 +321,12 @@ class MarketplaceConnector(object):
             for code, label in klass.get_carrier_codes():
                 seen.setdefault(code, label)
         return sorted(seen.items(), key=lambda kv: kv[1].lower())
+
+    @classmethod
+    def get_brand_codes_for(cls, code):
+        """Traduzioni corriere -> codice del connettore con quel codice ({} se ignoto)."""
+        klass = CONNECTOR_REGISTRY.get(code)
+        return dict(getattr(klass, "carrier_brand_codes", {}) or {}) if klass else {}
 
     # ------------------------------------------------------------------
     # CONTRATTO: metodi che ogni connettore concreto DEVE implementare.

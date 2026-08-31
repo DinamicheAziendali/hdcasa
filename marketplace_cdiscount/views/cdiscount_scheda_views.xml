@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <!-- ⚠️ In Odoo 18 la vista elenco si chiama <list>, non <tree>. -->
+  <record id="view_cdiscount_scheda_list" model="ir.ui.view">
+    <field name="name">cdiscount.scheda.list</field>
+    <field name="model">cdiscount.scheda</field>
+    <field name="arch" type="xml">
+      <list string="Schede Cdiscount">
+        <field name="channel_id"/>
+        <field name="codice"/>
+        <field name="product_id"/>
+        <!-- ⚠️ IL GIALLO STA SU `sconosciuto`, ed e' la decorazione che
+             conta di piu' di tutta la pagina. «Non lo so» e' lo stato che
+             non dice ne' si' ne' no: e' il valore di partenza di una riga
+             mai mandata ED e' quel che resta dopo un pacchetto scaduto — cioe'
+             una scheda che potrebbe esistere su Cdiscount senza che noi lo
+             sappiamo. Senza un colore si legge esattamente come «a posto»,
+             e sparirebbe in mezzo alle riuscite: e' l'unico stato che una
+             persona deve guardare a mano, uno per uno.
+             Il rosso e' il rifiuto (Cdiscount ha detto perche', e la riga
+             ripartira' da sola col prossimo invio); il verde e' la scheda
+             che c'e'. «In attesa» resta senza colore: e' l'unico stato in
+             cui non c'e' niente da fare se non aspettare. -->
+        <field name="stato"
+               decoration-warning="stato == 'sconosciuto'"
+               decoration-danger="stato == 'rifiutato'"
+               decoration-success="stato == 'riuscito'"/>
+        <!-- Il motivo sta accanto allo stato, non dietro un click: la
+             domanda vera non e' «quante sono rosse» ma «perche'». -->
+        <field name="motivo"/>
+        <field name="pacchetto_id"/>
+        <field name="controllato_il"/>
+        <!-- ⚠️ Nascosta ma a portata di un clic sulle colonne: davanti a una
+             scheda rifiutata per il titolo, la prima domanda e' se il file
+             caricato ieri l'avesse gia' corretta. -->
+        <field name="contenuti_il" optional="hide"/>
+      </list>
+    </field>
+  </record>
+
+  <record id="view_cdiscount_scheda_form" model="ir.ui.view">
+    <field name="name">cdiscount.scheda.form</field>
+    <field name="model">cdiscount.scheda</field>
+    <field name="arch" type="xml">
+      <form string="Scheda Cdiscount">
+        <sheet>
+          <group>
+            <group string="Chi e'">
+              <field name="channel_id"/>
+              <field name="codice"/>
+              <field name="product_id"/>
+            </group>
+            <group string="Cosa ne e' stato">
+              <field name="stato"/>
+              <field name="pacchetto_id"/>
+              <field name="controllato_il"/>
+            </group>
+          </group>
+          <group string="Motivo">
+            <field name="motivo" nolabel="1"/>
+          </group>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+  <record id="view_cdiscount_scheda_search" model="ir.ui.view">
+    <field name="name">cdiscount.scheda.search</field>
+    <field name="model">cdiscount.scheda</field>
+    <field name="arch" type="xml">
+      <search>
+        <field name="codice"/>
+        <field name="product_id"/>
+        <field name="channel_id"/>
+        <field name="pacchetto_id"/>
+        <!-- I quattro stati, uno per uno. ⚠️ Ci sono TUTTI e quattro apposta:
+             uno stato senza il suo filtro e' uno stato che nessuno guarda, e
+             `sconosciuto` — che e' il valore di partenza — sarebbe proprio
+             quello a sparire. -->
+        <filter name="in_attesa" string="In attesa dell'esito"
+                domain="[('stato', '=', 'in_attesa')]"/>
+        <filter name="riuscite" string="Riuscite"
+                domain="[('stato', '=', 'riuscito')]"/>
+        <filter name="rifiutate" string="Rifiutate"
+                domain="[('stato', '=', 'rifiutato')]"/>
+        <!-- ⚠️ «Non lo so» non e' «a posto»: sono le schede su cui Cdiscount
+             non si e' pronunciato, comprese quelle di un pacchetto scaduto.
+             Vanno riguardate a mano prima di rimandarle, perche' potrebbero
+             gia' esistere la' fuori. -->
+        <filter name="sconosciute" string="Senza verdetto"
+                domain="[('stato', '=', 'sconosciuto')]"/>
+        <separator/>
+        <filter name="mai_partite" string="Mai partite"
+                domain="[('pacchetto_id', '=', False)]"/>
+        <!-- ⚠️ QUANTO LAVORO MANCA, ed e' IL numero della consegna: dei 604
+             prodotti del perimetro solo 257 hanno oggi un nome francese, e
+             per gli altri 347 questi tre campi sono vuoti. Una scheda senza
+             tutti e tre non parte: `corpo_scheda` pretende titolo,
+             descrizione E almeno un'immagine, e li rifiuta uno per uno.
+             ⚠️ Il dominio e' la copia a mano di `SENZA_CONTENUTI`
+             (`models/cdiscount_scheda.py`) — una vista non puo' importare
+             una costante Python. Chi cambia l'uno cambi anche l'altro, o il
+             conto che si legge qui non sara' quello che l'invio applica. -->
+        <filter name="senza_contenuti" string="Senza contenuti"
+                domain="['|', '|', ('titolo', '=', False),
+                         ('descrizione', '=', False),
+                         ('immagini', '=', False)]"/>
+        <separator/>
+        <!-- ⚠️⚠️ LE ORFANE, ED E' IL FILTRO PIU' IMPORTANTE DI QUESTA
+             PAGINA. Una riga «in attesa» SENZA pacchetto e' in un limbo che
+             nessun giro automatico risolve: il raccoglitore parte dai
+             pacchetti aperti e qui non ce n'e' uno, e l'invio non la
+             riprende perche' `_candidate()` esclude «in attesa» apposta.
+             Senza questo filtro quelle righe non comparirebbero da nessuna
+             parte e resterebbero ferme per sempre, in silenzio.
+             Ci si arriva per cinque strade, tutte dentro `manda_schede`:
+             vedi `ORFANE` in `models/cdiscount_scheda.py`.
+             ⚠️ Prima di rimetterle in gioco (Azioni → «Rimetti in gioco»)
+             va guardato il registro: nei casi in cui il pacchetto era gia'
+             partito, il suo numero e' li' — e la scheda potrebbe esistere
+             gia' su Cdiscount. -->
+        <filter name="orfane" string="⚠️ In attesa ma senza pacchetto"
+                domain="[('stato', '=', 'in_attesa'),
+                         ('pacchetto_id', '=', False)]"/>
+        <!-- ⚠️⚠️ LE ARENATE, ED E' IL VICOLO CIECO PIU' CAPIENTE: ci
+             finiscono fino a 10.000 schede per volta, tutte insieme. Sono le
+             righe rimaste «senza verdetto» dentro un pacchetto ormai chiuso —
+             lo stato in cui la scadenza mette OGNI riga di OGNI pacchetto
+             scaduto. Il raccoglitore non le guarda (guarda i pacchetti
+             aperti), l'invio non le riprende (vuole «senza verdetto» SENZA
+             pacchetto), e senza questo filtro finivano in mezzo alle schede
+             mai partite — che all'inizio sono la maggioranza: dei 604
+             prodotti del perimetro, 347 non hanno ancora il nome francese.
+             ⚠️ GLI STATI SENZA VERDETTO SONO DUE: «Non lo so» e «In attesa
+             dell'esito». Anche la seconda, con un pacchetto CHIUSO addosso,
+             e' ferma per sempre — e senza questa parola finirebbe in mezzo
+             alle «In attesa» vere, che invece stanno solo aspettando.
+             ⚠️ Prima di rimetterle in gioco (Azioni → «Rimetti in gioco»):
+             il pacchetto e' scaduto senza esito, quindi NON sappiamo se
+             Cdiscount abbia preso quelle schede. Se esistono gia' la' fuori,
+             rimandarle ne fa dei doppioni su un catalogo pubblico. Il numero
+             del pacchetto sta nel «Motivo» della riga: si guarda prima.
+             ⚠️ Il dominio e' la copia a mano di `ARENATE`
+             (`models/cdiscount_scheda.py`) — una vista non puo' importare
+             una costante Python. Chi cambia l'uno cambi anche l'altro, o il
+             bottone agira' su righe diverse da quelle mostrate. -->
+        <filter name="arenate" string="⚠️ Senza verdetto, pacchetto chiuso"
+                domain="[('stato', 'in', ['sconosciuto', 'in_attesa']),
+                         ('pacchetto_id', '!=', False),
+                         ('pacchetto_id.stato', '!=', 'aperto')]"/>
+        <group expand="0" string="Raggruppa per">
+          <filter name="per_canale" string="Canale"
+                  context="{'group_by': 'channel_id'}"/>
+          <filter name="per_stato" string="Stato"
+                  context="{'group_by': 'stato'}"/>
+          <filter name="per_pacchetto" string="Pacchetto"
+                  context="{'group_by': 'pacchetto_id'}"/>
+        </group>
+      </search>
+    </field>
+  </record>
+
+  <record id="action_cdiscount_scheda" model="ir.actions.act_window">
+    <field name="name">Schede Cdiscount</field>
+    <field name="res_model">cdiscount.scheda</field>
+    <field name="view_mode">list,form</field>
+    <field name="help" type="html">
+      <p class="o_view_nocontent_smiley_face">Nessuna scheda Cdiscount.</p>
+      <p>Le righe nascono quando si carica il file dei contenuti
+         («Contenuti Cdiscount»). Questa pagina risponde a una domanda sola:
+         <b>cosa è fermo e perché</b>. Il filtro «Senza contenuti» dice quanto
+         lavoro di traduzione manca, «Senza verdetto» le schede su cui
+         Cdiscount non si è pronunciato, e i due filtri con il triangolo — «In
+         attesa ma senza pacchetto» e «Senza verdetto, pacchetto chiuso» — le
+         righe che nessun giro automatico rimetterà mai in moto: quelle si
+         guardano a mano e si rimettono in gioco dal menu «Azioni».</p>
+    </field>
+  </record>
+
+  <!-- ⚠️ IL RIPESCAGGIO DELLE FERME (orfane e arenate), e sta nel menu
+       «Azioni» della lista
+       perche' e' un gesto su una SELEZIONE: si guardano le righe una per
+       una, si spuntano quelle da rimandare, e si sceglie. Non e' un bottone
+       «ripesca tutte» apposta — una riga orfana potrebbe gia' esistere su
+       Cdiscount, e rimandarla alla cieca farebbe un doppione su un catalogo
+       pubblico.
+       ⚠️ La guardia vera NON e' questa vista: il metodo controlla da solo
+       che le righe siano orfane davvero e che chi chiama sia amministratore
+       (`action_cdiscount_ripesca` in `models/cdiscount_scheda.py`). Una
+       schermata si aggira con una chiamata RPC; un controllo nel metodo no.
+       Stessa forma di `integrations_core.action_server_push_shipment`.
+       ⚠️ E NON HA `groups_id`, ED E' UNA SCELTA — dichiarata qui perche' non
+       si veda come una dimenticanza. Con `groups_id` la voce sparirebbe dal
+       menu per chi non e' amministratore: sparirebbe anche la sola occasione
+       in cui una persona scopre che le orfane si possono ripescare, e chi ha
+       davanti il filtro «In attesa ma senza pacchetto» non avrebbe modo di
+       sapere che esiste un rimedio e a chi chiederlo. Senza, la voce si vede,
+       si clicca, e il metodo risponde con un `AccessError` che dice perche' e
+       chi puo' farlo. Un permesso spiegato insegna; un menu vuoto no. La
+       porta resta chiusa in tutti e due i casi — a chiuderla e' il controllo
+       nel metodo, non la visibilita' della voce. -->
+  <record id="action_server_cdiscount_ripesca" model="ir.actions.server">
+    <field name="name">Rimetti in gioco (schede ferme)</field>
+    <field name="model_id" ref="model_cdiscount_scheda"/>
+    <field name="binding_model_id" ref="model_cdiscount_scheda"/>
+    <field name="binding_view_types">list,form</field>
+    <field name="state">code</field>
+    <field name="code">action = records.action_cdiscount_ripesca()</field>
+  </record>
+</odoo>

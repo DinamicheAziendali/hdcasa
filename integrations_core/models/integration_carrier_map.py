@@ -16,6 +16,26 @@ from odoo import api, fields, models
 from odoo.exceptions import ValidationError
 
 from ..connectors.base import MarketplaceConnector
+from ..connectors.carrier_resolver import NON_COLLEGATO, NON_TRADOTTO, code_for_brand
+
+
+class CarrierResolution(object):
+    """Esito della risoluzione del corriere: si comporta come la vecchia riga.
+
+    I connettori usano soltanto `external_code`, `tracking_url_template` e la
+    verità/falsità del risultato: questo oggetto offre esattamente quelli, più
+    la causa del fallimento per scegliere il messaggio giusto.
+    """
+
+    def __init__(self, external_code="", tracking_url_template="",
+                 reason="", brand_name=""):
+        self.external_code = external_code
+        self.tracking_url_template = tracking_url_template
+        self.failure_reason = reason
+        self.brand_name = brand_name
+
+    def __bool__(self):
+        return bool(self.external_code)
 
 
 class IntegrationCarrierMap(models.Model):
@@ -222,26 +242,36 @@ class IntegrationCarrierMap(models.Model):
 
     @api.model
     def resolve_external_code(self, channel, source_model, source_res_id, company):
-        """Riga di mapping per quel vettore su quel canale. Vuoto se assente.
+        """Codice corriere e URL di tracciamento per quel vettore su quel canale.
 
-        Cerca prima sulle chiavi durevoli; ripiega su carrier_id per le righe
-        non ancora convertite (installazioni aggiornate ma mai ri-salvate).
+        Legge i modelli NUOVI (anagrafica corrieri, collegamento vettore →
+        corriere, eccezioni); le righe di questo modello non vengono più
+        consultate. La firma resta quella di prima e il risultato espone gli
+        stessi due attributi usati dai connettori, così i loro file non
+        cambiano.
+
+        Ritorna un CarrierResolution: falso se la risoluzione non riesce, con
+        `failure_reason` che distingue le due cause (vettore non collegato /
+        corriere non tradotto), perché sono problemi diversi e vanno detti in
+        modo diverso.
         """
-        if not source_model or not source_res_id:
-            return self.browse()
-        mapping = self.search([
-            ("channel_id", "=", channel.id),
-            ("source_model", "=", source_model),
-            ("source_res_id", "=", source_res_id),
-            ("company_id", "=", company.id),
-        ], limit=1)
-        if mapping or source_model != "delivery.carrier":
-            return mapping
-        return self.search([
-            ("channel_id", "=", channel.id),
-            ("carrier_id", "=", source_res_id),
-            ("company_id", "=", company.id),
-        ], limit=1)
+        link = self.env["centrivo.carrier.source"].resolve_brand(
+            source_model, source_res_id, company)
+        if not link:
+            return CarrierResolution(reason=NON_COLLEGATO)
+        brand = link.brand_id
+        override = self.env["centrivo.carrier.override"].resolve_code(
+            channel, brand, company)
+        codice = code_for_brand(
+            brand.code,
+            MarketplaceConnector.get_brand_codes_for(channel.connector_code),
+            override_code=override)
+        if not codice:
+            return CarrierResolution(reason=NON_TRADOTTO, brand_name=brand.name)
+        return CarrierResolution(
+            external_code=codice,
+            tracking_url_template=brand.tracking_url_template or "",
+            brand_name=brand.name)
 
     # Selection DINAMICO: le opzioni sono i codici dichiarati dai connettori.
     # Vedi nota in _selection_external_code sul perché si ritorna l'UNIONE.

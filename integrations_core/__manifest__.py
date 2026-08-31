@@ -9,7 +9,7 @@
 # di configurazione sul record "centrivo.channel", valorizzati in ambiente.
 {
     "name": "Integrations Core",
-    "version": "18.0.2.9.0",
+    "version": "18.0.3.3.0",
     "license": "OPL-1",
     "category": "Connector",
     "summary": "Layer condiviso per i connettori marketplace: contratti astratti, trasporti REST/CSV/SFTP, mapping SKU e corrieri, registro ordini e log operazioni.",
@@ -23,6 +23,7 @@
                 "stock_delivery"],
     "data": [
         "security/ir.model.access.csv",
+        "data/carrier_brand_data.xml",
         "security/integration_security.xml",
         "data/ir_cron.xml",
         "views/integration_channel_views.xml",
@@ -30,6 +31,7 @@
         "views/integration_sku_map_views.xml",
         "views/integration_carrier_map_views.xml",
         "views/integration_job_log_views.xml",
+        "views/carrier_v2_views.xml",
         "views/integration_menus.xml",
         "views/integration_config_views.xml",
     ],

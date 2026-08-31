@@ -1,0 +1,5 @@
+# -*- coding: utf-8 -*-
+# Copyright 2026 Angelo Margarella (www.hdcasa.it)
+# License OPL-1 (Odoo Proprietary License v1.0). See LICENSE file for full terms.
+from . import temu
+from . import temu_token

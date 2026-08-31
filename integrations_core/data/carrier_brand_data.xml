@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!-- Corrieri iniziali. NESSUN URL di tracciamento: l'indirizzo dipende
+         dall'installazione e in produzione è già configurato riga per riga.
+         Se lo consegnassimo precompilato, la migrazione lo troverebbe già
+         valorizzato e non copierebbe quello dell'utente, cambiando in silenzio
+         il link inviato ai marketplace. -->
+    <record id="carrier_brand_brt" model="centrivo.carrier.brand">
+        <field name="name">BRT</field>
+        <field name="code">brt</field>
+    </record>
+    <record id="carrier_brand_gls" model="centrivo.carrier.brand">
+        <field name="name">GLS</field>
+        <field name="code">gls</field>
+    </record>
+    <record id="carrier_brand_poste" model="centrivo.carrier.brand">
+        <field name="name">Poste Italiane</field>
+        <field name="code">poste</field>
+    </record>
+    <record id="carrier_brand_sda" model="centrivo.carrier.brand">
+        <field name="name">SDA</field>
+        <field name="code">sda</field>
+    </record>
+    <record id="carrier_brand_dhl" model="centrivo.carrier.brand">
+        <field name="name">DHL</field>
+        <field name="code">dhl</field>
+    </record>
+    <record id="carrier_brand_ups" model="centrivo.carrier.brand">
+        <field name="name">UPS</field>
+        <field name="code">ups</field>
+    </record>
+    <record id="carrier_brand_tnt" model="centrivo.carrier.brand">
+        <field name="name">TNT</field>
+        <field name="code">tnt</field>
+    </record>
+    <record id="carrier_brand_dpd" model="centrivo.carrier.brand">
+        <field name="name">DPD</field>
+        <field name="code">dpd</field>
+    </record>
+    <record id="carrier_brand_fedex" model="centrivo.carrier.brand">
+        <field name="name">FedEx</field>
+        <field name="code">fedex</field>
+    </record>
+</odoo>

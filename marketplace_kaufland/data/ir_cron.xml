@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Copyright 2026 Angelo Margarella (www.hdcasa.it)
+    License OPL-1 (Odoo Proprietary License v1.0). See LICENSE file for full terms.
+
+    Azione pianificata del connettore Kaufland: il giro automatico di
+    allineamento di prezzi e giacenze.
+
+    ⚠️ `noupdate="1"` NON è decorazione: senza, ogni aggiornamento del modulo
+    riscriverebbe il record e RISPEGNEREBBE il cron, annullando la scelta di
+    chi l'aveva acceso. È la stessa forma di `marketplace_temu`.
+
+    ⚠️ Sintassi Odoo 18: niente `numbercall` e niente `doall` — non esistono
+    più, e il connettore Temu ci è già inciampato una volta.
+
+    NB: qui c'è SOLO l'allineamento. Il riaggancio e la ricognizione sono
+    letture che si fanno a mano, e la creazione delle offerte METTE IN
+    VENDITA su un marketplace vero: nessuna delle tre va automatizzata.
+-->
+<odoo noupdate="1">
+  <record id="cron_kaufland_allinea" model="ir.cron">
+    <field name="name">Kaufland: allinea prezzi e giacenze</field>
+    <field name="model_id" ref="integrations_core.model_centrivo_channel"/>
+    <field name="state">code</field>
+    <field name="code">model.cron_kaufland_allinea_tutti()</field>
+    <field name="interval_number">1</field>
+    <field name="interval_type">hours</field>
+    <field name="user_id" ref="base.user_root"/>
+    <!-- ⚠️ Nasce SPENTO. Si accende quando la prova sul vero è passata: un
+         giro automatico su un marketplace vero, prima di aver visto un giro
+         manuale andare a buon fine, è una scommessa. -->
+    <field name="active" eval="False"/>
+  </record>
+</odoo>

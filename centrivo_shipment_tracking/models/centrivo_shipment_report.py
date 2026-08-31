@@ -50,7 +50,7 @@ class CentrivoShipmentReport(models.Model):
         aggregator="avg",
         help="Ore tra presa in carico e consegna (vuoto se non consegnata).")
     delay_days = fields.Integer(
-        string="Giorni di ritardo", readonly=True, group_operator="avg")
+        string="Giorni di ritardo", readonly=True, aggregator="avg")
 
     nbr = fields.Integer(string="N. spedizioni", readonly=True)
     delivered_count = fields.Integer(string="Consegnate", readonly=True)

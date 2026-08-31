@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_temu_shipment_list" model="ir.ui.view">
+        <field name="name">centrivo.temu.shipment.list</field>
+        <field name="model">centrivo.temu.shipment</field>
+        <field name="arch" type="xml">
+            <list string="Spedizioni comunicate a Temu" create="0" edit="0">
+                <field name="create_date" string="Comunicata il"/>
+                <field name="parent_order_sn"/>
+                <field name="order_sn"/>
+                <field name="quantity"/>
+                <field name="carrier_code"/>
+                <field name="tracking_number"/>
+                <field name="picking_id"/>
+                <field name="channel_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_temu_shipment" model="ir.actions.act_window">
+        <field name="name">Spedizioni Temu</field>
+        <field name="res_model">centrivo.temu.shipment</field>
+        <field name="view_mode">list</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiley_face">Nessuna spedizione comunicata a Temu.</p>
+            <p>Qui compare una riga per ogni riga d'ordine comunicata come spedita.
+               Serve a non ricomunicare due volte la stessa riga: un numero di
+               spedizione, su Temu, si può usare una volta sola.</p>
+        </field>
+    </record>
+
+    <menuitem id="menu_temu_shipment"
+              name="Spedizioni Temu"
+              parent="integrations_core.menu_integrations_root"
+              action="action_temu_shipment"
+              sequence="46"/>
+</odoo>

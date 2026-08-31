@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+  <!-- ⚠️ In Odoo 18 la vista elenco si chiama <list>, non <tree>. -->
+  <record id="view_cdiscount_pacchetto_list" model="ir.ui.view">
+    <field name="name">cdiscount.pacchetto.list</field>
+    <field name="model">cdiscount.pacchetto</field>
+    <field name="arch" type="xml">
+      <list string="Pacchetti Cdiscount">
+        <field name="channel_id"/>
+        <field name="numero"/>
+        <field name="tipo"/>
+        <field name="nato_il"/>
+        <!-- ⚠️ E' LA COLONNA DA GUARDARE. Passata questa data l'esito non
+             esiste piu': non e' recuperabile in nessun modo, e le schede
+             restano senza verdetto. Il rosso sta sui pacchetti gia' scaduti,
+             il giallo su quelli ancora aperti che aspettano un esito. -->
+        <field name="scade_il"
+               decoration-danger="stato == 'scaduto'"
+               decoration-warning="stato == 'aperto'"/>
+        <field name="stato"
+               decoration-danger="stato == 'scaduto'"
+               decoration-warning="stato == 'aperto'"
+               decoration-success="stato == 'raccolto'"/>
+        <field name="avvisato_scadenza" optional="hide"/>
+        <!-- ⚠️ LA SECONDA BANDIERA, e senza questa riga non compariva in
+             nessuna vista. Accesa significa che di questo pacchetto e' gia'
+             stato detto a una persona che il suo rapporto NON NOMINA
+             nessuna delle schede mandate — il sospetto di una chiave letta
+             col nome sbagliato, cioe' il modo in cui il raccoglitore
+             potrebbe non raccogliere niente senza che nessun errore
+             compaia. E' anche l'unico modo di capire, guardando, perche' un
+             pacchetto non riceva piu' avvisi: la bandiera dice «l'ho gia'
+             detto», e l'attivita' puo' essere stata chiusa da qualcuno. -->
+        <field name="avvisato_rapporto_muto" optional="hide"/>
+      </list>
+    </field>
+  </record>
+
+  <record id="view_cdiscount_pacchetto_form" model="ir.ui.view">
+    <field name="name">cdiscount.pacchetto.form</field>
+    <field name="model">cdiscount.pacchetto</field>
+    <field name="arch" type="xml">
+      <form string="Pacchetto Cdiscount">
+        <sheet>
+          <group>
+            <group string="Identita'">
+              <field name="channel_id"/>
+              <field name="numero"/>
+              <field name="tipo"/>
+            </group>
+            <group string="La finestra dei tre giorni">
+              <field name="nato_il"/>
+              <field name="scade_il"/>
+              <field name="stato"/>
+              <field name="avvisato_scadenza"/>
+              <!-- ⚠️ Le due bandiere stanno INSIEME e nella stessa
+                   schermata dell'attivita' che le accende (la chatter qui
+                   sotto): una bandiera accesa e nessuna attivita' aperta
+                   significa che l'avviso c'e' stato e qualcuno l'ha chiuso,
+                   e senza vederle si legge come «non ha mai avvisato». -->
+              <field name="avvisato_rapporto_muto"/>
+            </group>
+          </group>
+        </sheet>
+        <!-- ⚠️ LA CHATTER NON E' DECORAZIONE: e' dove compare (e dove si
+             chiude) l'attivita' «questo pacchetto sta per scadere». Il
+             modello eredita `mail.thread` + `mail.activity.mixin`; senza
+             questo pannello l'avviso esisterebbe solo nella lista
+             «Attivita'» dell'assegnatario, e aprendo il pacchetto — cioe'
+             proprio il record che l'attivita' indica — non si vedrebbe
+             niente. Tag `<chatter/>` nativo di Odoo 18. -->
+        <chatter/>
+      </form>
+    </field>
+  </record>
+
+  <record id="view_cdiscount_pacchetto_search" model="ir.ui.view">
+    <field name="name">cdiscount.pacchetto.search</field>
+    <field name="model">cdiscount.pacchetto</field>
+    <field name="arch" type="xml">
+      <search>
+        <field name="numero"/>
+        <field name="channel_id"/>
+        <!-- ⚠️ LA SCADENZA E' RICERCABILE, e non e' un di piu'. E' la
+             domanda per cui questo modello esiste: senza questo campo e i
+             due filtri qui sotto, «cosa scade nelle prossime ore» si puo'
+             rispondere solo ordinando a occhio la colonna della lista — su
+             un elenco che cresce di un pacchetto per invio. -->
+        <field name="scade_il"/>
+        <!-- ⚠️ CIO' CHE SI PUO' ANCORA SALVARE. Solo gli APERTI: la scadenza
+             di un pacchetto gia' raccolto non interessa a nessuno. Il
+             confronto e' in UTC come la colonna, perche' `datetime.datetime.
+             now()` nella valutazione dei domini rende UTC — la stessa scala
+             con cui il campo e' scritto.
+
+             La finestra e' di dodici ore apposta: e' la stessa dell'avviso
+             del Compito 11, cosi' questo filtro mostra esattamente cio' per
+             cui e' partita (o sta per partire) un'attivita'. Non ha un
+             estremo inferiore: i pacchetti gia' oltre la scadenza ma ancora
+             aperti sono anche loro roba da guardare adesso, e infatti il
+             filtro dopo li isola. -->
+        <filter name="scade_entro_12_ore" string="Scade entro 12 ore"
+                domain="[('stato', '=', 'aperto'),
+                         ('scade_il', '&lt;=',
+                          (datetime.datetime.now() +
+                           datetime.timedelta(hours=12)).strftime(
+                              '%Y-%m-%d %H:%M:%S'))]"/>
+        <!-- ⚠️ Aperti e GIA' OLTRE i tre giorni: l'esito e' perso ma nessuno
+             ha ancora chiuso il pacchetto. Se questo elenco non e' vuoto, il
+             raccoglitore non sta girando o si e' inceppato — ed e' l'unico
+             modo di accorgersene prima di scoprire le schede senza
+             verdetto. -->
+        <filter name="oltre_la_scadenza"
+                string="Oltre la scadenza, ancora aperti"
+                domain="[('stato', '=', 'aperto'),
+                         ('scade_il', '&lt;=', datetime.datetime.now(
+                          ).strftime('%Y-%m-%d %H:%M:%S'))]"/>
+        <separator/>
+        <!-- I tre stati, uno per uno: sono le tre domande vere. -->
+        <filter name="aperti" string="In attesa dell'esito"
+                domain="[('stato', '=', 'aperto')]"/>
+        <filter name="raccolti" string="Esito raccolto"
+                domain="[('stato', '=', 'raccolto')]"/>
+        <!-- ⚠️ Un pacchetto scaduto e' un esito perso per sempre: e' il
+             filtro che dice quanto ci e' costato non guardare. -->
+        <filter name="scaduti" string="Scaduti senza esito"
+                domain="[('stato', '=', 'scaduto')]"/>
+        <separator/>
+        <!-- Gli aperti su cui nessuna attivita' e' ancora partita: serve a
+             capire se l'avviso del Compito 11 sta funzionando, non a
+             misurare l'urgenza (per quella c'e' il primo filtro). -->
+        <filter name="da_avvisare" string="Aperti e non ancora avvisati"
+                domain="[('stato', '=', 'aperto'),
+                         ('avvisato_scadenza', '=', False)]"/>
+        <!-- ⚠️ I pacchetti il cui rapporto non ha nominato nessuna scheda.
+             Se questo elenco non e' vuoto, il sospetto non e' su un
+             pacchetto ma sul RACCOGLITORE: i nomi delle chiavi del rapporto
+             vengono dalla documentazione e non sono mai stati confermati sul
+             vero. E' la prima cosa da guardare dopo la prima raccolta
+             vera. -->
+        <filter name="rapporto_muto" string="Rapporto muto (già avvisati)"
+                domain="[('avvisato_rapporto_muto', '=', True)]"/>
+        <group expand="0" string="Raggruppa per">
+          <filter name="per_canale" string="Canale"
+                  context="{'group_by': 'channel_id'}"/>
+          <filter name="per_stato" string="Stato"
+                  context="{'group_by': 'stato'}"/>
+        </group>
+      </search>
+    </field>
+  </record>
+
+  <record id="action_cdiscount_pacchetto" model="ir.actions.act_window">
+    <field name="name">Pacchetti Cdiscount</field>
+    <field name="res_model">cdiscount.pacchetto</field>
+    <field name="view_mode">list,form</field>
+    <field name="help" type="html">
+      <p class="o_view_nocontent_smiley_face">Nessun pacchetto mandato a Cdiscount.</p>
+      <p>Un pacchetto nasce a ogni invio di schede e porta il numero con cui
+         Cdiscount ci restituirà l'esito. <b>Quell'esito scade in tre
+         giorni</b>: passati quelli non esiste più nessun modo di sapere cosa
+         Cdiscount abbia fatto delle schede che c'erano dentro — e un
+         pacchetto ne porta fino a 10.000.</p>
+      <p>I due filtri da guardare sono «Scade entro 12 ore» e «Oltre la
+         scadenza, ancora aperti»: se il secondo non è vuoto, il raccoglitore
+         non sta girando.</p>
+    </field>
+  </record>
+</odoo>

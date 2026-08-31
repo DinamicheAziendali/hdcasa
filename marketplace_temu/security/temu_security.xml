@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Copyright 2026 Angelo Margarella (www.hdcasa.it)
+    License OPL-1 (Odoo Proprietary License v1.0). See LICENSE file for full terms.
+
+    LE REGOLE MULTI-AZIENDA dei due modelli propri di questo modulo:
+    `centrivo.temu.listing` (le schede agganciate) e `centrivo.temu.shipment`
+    (i pacchetti comunicati a Temu).
+
+    Non è multi-tenant infrastrutturale: è la separazione `company_id`
+    standard di Odoo dentro la STESSA istanza. Un record si vede solo dagli
+    utenti delle aziende a cui appartiene.
+
+    ⚠️ SENZA QUESTE DUE REGOLE, CON DUE AZIENDE NELLA STESSA ODOO le schede e
+    i pacchetti di una si vedono dall'altra. Non è riservatezza fra estranei —
+    le aziende sono la stessa casa — ma GESTO SBAGLIATO: dalla pagina delle
+    schede si guardano a mano le righe e si rimettono in gioco, e da lì
+    partono scritture verso un catalogo PUBBLICO (prezzo e giacenza). Con gli
+    elenchi mescolati un «seleziona tutto» prende anche le righe dell'altra
+    azienda, e il filtro nella schermata non le distingue in nessun modo.
+    Lo stesso vale per i pacchetti: rispedire a Temu la spedizione dell'altra
+    azienda significa dichiarare un tracking sbagliato su un ordine vero.
+
+    ⚠️ IL PATTERN È COPIATO, NON REINVENTATO — da
+    `marketplace_cdiscount/security/cdiscount_security.xml`, che a sua volta
+    ricalca `integrations_core` (sette modelli), `centrivo_carrier_base`
+    (quattro) e `centrivo_shipment_tracking` (dieci). Regola GLOBALE
+    (`global=True`, cioè vale per chiunque, amministratori compresi) col
+    dominio `['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]`.
+    `company_ids` sono le aziende selezionate dall'utente nel selettore in
+    alto. Il ramo `= False` tiene dentro i record senza azienda: qui non ce ne
+    sono — `company_id` è `related` di `channel_id.company_id`, che è
+    `required` — ma toglierlo renderebbe la regola diversa da tutte le altre
+    della casa per una differenza che non serve a niente.
+
+    ⚠️ NIENTE MIGRAZIONE DI RIALLINEAMENTO, e va detto perché
+    `integrations_core` ne ha una. Là le regole sono arrivate DOPO i record,
+    nati senza `company_id`, che sarebbero spariti dalla vista. Qui il modulo
+    non è MAI STATO INSTALLATO da nessuna parte: non esiste una sola riga
+    preesistente da riallineare, ed è per questo che la regola arriva oggi
+    senza costo.
+
+    ⚠️ Nota di manutenzione, CHIUSA il 2026-08-27: il file gemello di
+    Cdiscount elencava Kaufland e Temu come «gli unici due connettori di casa
+    senza regola multi-azienda». Da quando esistono queste due regole resta
+    solo Kaufland, e quella riga è stata corretta lì
+    (`marketplace_cdiscount/security/cdiscount_security.xml`). Cdiscount non è
+    in produzione: era una riga di verità in un commento, e costava una riga.
+    ⚠️ Kaufland la sua regola non ce l'ha ancora: resta un seguito da fare lì.
+-->
+<odoo>
+  <record id="temu_listing_company_rule" model="ir.rule">
+    <field name="name">centrivo.temu.listing multi-company</field>
+    <field name="model_id" ref="model_centrivo_temu_listing"/>
+    <field name="global" eval="True"/>
+    <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+  </record>
+
+  <record id="temu_shipment_company_rule" model="ir.rule">
+    <field name="name">centrivo.temu.shipment multi-company</field>
+    <field name="model_id" ref="model_centrivo_temu_shipment"/>
+    <field name="global" eval="True"/>
+    <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+  </record>
+</odoo>

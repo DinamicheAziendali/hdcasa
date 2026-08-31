@@ -51,4 +51,18 @@
         <field name="global" eval="True"/>
         <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
     </record>
+
+    <record id="integration_carrier_source_company_rule" model="ir.rule">
+        <field name="name">centrivo.carrier.source multi-company</field>
+        <field name="model_id" ref="model_centrivo_carrier_source"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
+
+    <record id="integration_carrier_override_company_rule" model="ir.rule">
+        <field name="name">centrivo.carrier.override multi-company</field>
+        <field name="model_id" ref="model_centrivo_carrier_override"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+    </record>
 </odoo>

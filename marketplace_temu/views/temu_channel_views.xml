@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_channel_form_temu" model="ir.ui.view">
+        <field name="name">centrivo.channel.form.temu</field>
+        <field name="model">centrivo.channel</field>
+        <field name="inherit_id" ref="integrations_core.view_integration_channel_form"/>
+        <field name="arch" type="xml">
+            <data>
+                <!-- La "API Key" del nucleo serve a BricoBravo e ManoMano, che
+                     autenticano con una chiave sola negli header. Temu no: usa
+                     app key + app secret + access token, nella scheda qui sotto.
+                     Lasciarla visibile inviterebbe a incollarci dentro una delle
+                     chiavi Temu, che non verrebbe mai letta da nessuno. -->
+                <xpath expr="//field[@name='api_key']" position="attributes">
+                    <attribute name="invisible">connector_code == 'temu'</attribute>
+                </xpath>
+                <notebook position="inside">
+                    <page string="Temu" name="temu"
+                          invisible="connector_code != 'temu'">
+                        <group>
+                            <group string="Credenziali">
+                                <field name="temu_app_key"/>
+                                <field name="temu_app_secret" password="True"/>
+                                <field name="temu_access_token" password="True"/>
+                                <field name="temu_token_expiry"/>
+                            <field name="temu_token_days_left"/>
+                            <!-- ⚠️ La scadenza qui sopra era un promemoria
+                                 scritto a mano. Questo bottone la chiede al
+                                 token stesso e la RISCRIVE, e dice quali
+                                 chiamate del modulo non sono coperte dai
+                                 permessi: e' la stessa interrogazione con
+                                 cui e' stato diagnosticato il blocco degli
+                                 importi. Sola lettura verso Temu. -->
+                            <button name="action_temu_verifica_collegamento"
+                                    type="object"
+                                    string="Verifica token e permessi"
+                                    class="btn-secondary"/>
+                            </group>
+                            <group string="Prezzi e giacenze">
+                            <field name="temu_pricelist_id"/>
+                            <field name="temu_allow_zero_stock"/>
+                            <button name="action_temu_push_stock" type="object"
+                                    string="Allinea giacenze" class="btn-primary"/>
+                            <button name="action_temu_push_prices" type="object"
+                                    string="Proponi prezzi" class="btn-primary"/>
+                            <button name="action_temu_check_stock" type="object"
+                                    string="Confronta giacenze (sola lettura)"
+                                    class="btn-secondary"/>
+                            <!-- ⚠️ Un prezzo proposto a Temu NON cambia
+                                 subito: Temu apre una pratica di revisione.
+                                 Finora il numero della pratica finiva nel Log
+                                 operazioni e nessuno rileggeva mai se fosse
+                                 stata accettata. Questo bottone lo chiede.
+                                 Sola lettura verso Temu. -->
+                            <button name="action_temu_check_price_orders"
+                                    type="object"
+                                    string="Pratiche prezzo aperte (sola lettura)"
+                                    class="btn-secondary"/>
+                        </group>
+                        <group string="Ordini">
+                            <field name="temu_order_status"/>
+                            <field name="temu_orders_from"/>
+                            <field name="temu_import_on_pull"/>
+                            <field name="temu_shipping_product_id"/>
+                        </group>
+                        <group string="Impostazioni">
+                                <field name="temu_currency"/>
+                            <field name="temu_warehouse_id"/>
+                                <field name="temu_simulate"/>
+                            </group>
+                        </group>
+                        <group string="Ricognizione">
+                            <field name="temu_last_recon"/>
+                            <field name="temu_listing_count"/>
+                            <button name="action_temu_recon" type="object"
+                                    string="Ricognizione (sola lettura)"
+                                    class="btn-primary"/>
+                            <button name="action_temu_open_listings" type="object"
+                                    string="Apri le schede Temu" class="btn-secondary"/>
+                        </group>
+                    </page>
+                </notebook>
+            </data>
+        </field>
+    </record>
+</odoo>

@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_temu_listing_user,centrivo.temu.listing user,model_centrivo_temu_listing,base.group_user,1,1,1,0
+access_temu_listing_manager,centrivo.temu.listing manager,model_centrivo_temu_listing,base.group_system,1,1,1,1
+access_temu_shipment_user,centrivo.temu.shipment user,model_centrivo_temu_shipment,base.group_user,1,0,1,0
+access_temu_shipment_manager,centrivo.temu.shipment manager,model_centrivo_temu_shipment,base.group_system,1,1,1,1

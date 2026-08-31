@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Copyright 2026 Angelo Margarella (www.hdcasa.it)
+    License OPL-1 (Odoo Proprietary License v1.0). See LICENSE file for full terms.
+
+    L'UNICA azione pianificata di questa consegna: il raccoglitore degli
+    esiti. Non c'e' (e non ci sara' in questa consegna) un cron che MANDA
+    schede: mandare scrive su un catalogo pubblico e resta un gesto di una
+    persona che ha guardato. Raccogliere e' l'opposto — non scrive niente
+    fuori, e non farlo in tempo perde l'esito per sempre.
+
+    ⚠️ `noupdate="1"` NON e' decorazione: senza, ogni aggiornamento del
+    modulo riscriverebbe questo record e RISPEGNEREBBE il cron, annullando in
+    silenzio la scelta di chi l'aveva acceso. Stessa forma di
+    `marketplace_kaufland` e `marketplace_temu`.
+
+    ⚠️ Sintassi Odoo 18: niente `numbercall`, niente `doall` — non esistono
+    piu', e il connettore Temu ci e' gia' inciampato una volta.
+
+    ⚠️ E `noupdate="1"` CONGELA ANCHE L'INTERVALLO, non solo l'interruttore.
+    Su un database dove il modulo e' gia' installato, cambiare i 30 minuti
+    qui sotto e rilasciare una versione nuova NON cambia niente: il record
+    resta com'e'. E' la conseguenza corretta della scelta giusta — la cadenza
+    e' una cosa che si regola dalla schermata, e un aggiornamento non deve
+    poter sovrascrivere la regolazione di chi manda avanti la baracca — ma va
+    saputa: chi volesse cambiare la cadenza su un impianto vivo la cambia
+    dalle Azioni pianificate, non da qui. Da qui si cambia solo cio' che
+    vedranno le installazioni NUOVE.
+-->
+<odoo noupdate="1">
+  <record id="cron_cdiscount_raccogli" model="ir.cron">
+    <field name="name">Cdiscount: raccogli gli esiti dei pacchetti</field>
+    <field name="model_id" ref="integrations_core.model_centrivo_channel"/>
+    <field name="state">code</field>
+    <field name="code">model.cron_cdiscount_raccogli_tutti()</field>
+    <!-- ⚠️ MEZZ'ORA, e il conto va fatto perche' non e' un numero a caso.
+         La finestra dell'esito e' di TRE GIORNI (`GIORNI_ESITO`), cioe' 144
+         passaggi: un pacchetto ha 144 occasioni di essere letto prima di
+         diventare irrecuperabile.
+
+         ⚠️ E va confrontata col tetto della raccolta: un giro guarda al
+         massimo `MAX_PACCHETTI_PER_RACCOLTA` = 20 pacchetti per canale, i
+         piu' vicini alla scadenza per primi (`cdiscount.pacchetto._order` e'
+         `scade_il asc`). Il ritmo con cui i pacchetti NASCONO e' molto piu'
+         lento: l'invio e' un bottone che una persona schiaccia, e un clic
+         produce al massimo `MAX_PACCHETTI_PER_GIRO` = 2 pacchetti. Perche'
+         la raccolta resti indietro servirebbero piu' di 20 pacchetti nuovi
+         ogni mezz'ora sullo stesso canale, cioe' dieci clic in mezz'ora su
+         un catalogo che ne ha 604 in tutto: non succede. Il numero non va
+         cambiato per «andare piu' veloci»; va cambiato il giorno in cui a
+         mandare sara' un altro cron, e allora il conto si rifa'.
+
+         ⚠️ E mezz'ora e' anche la cadenza su cui e' tarato l'avviso di
+         scadenza (`ORE_AVVISO` = 12, cioe' 24 passaggi): la sorveglianza
+         gira dentro questo stesso cron. Cambiare qui cambia anche quello. -->
+    <field name="interval_number">30</field>
+    <field name="interval_type">minutes</field>
+    <!-- ⚠️ Senza `user_id` il cron gira come l'utente che ha installato il
+         modulo, e il giorno in cui quell'utente viene disattivato smette di
+         partire in silenzio. -->
+    <field name="user_id" ref="base.user_root"/>
+    <!-- ⚠️ NASCE SPENTO, e si accende SOLO quando una raccolta vera e'
+         andata pulita. Prima di allora il raccoglitore non e' mai stato
+         provato contro Cdiscount: i nomi delle chiavi del rapporto vengono
+         dalla documentazione e non sono mai stati confermati sul vero. Un
+         cron acceso che sbaglia a leggere il rapporto chiude i pacchetti
+         ogni mezz'ora scrivendo verdetti sbagliati su un catalogo pubblico
+         — e lo fa senza che nessuno stia guardando.
+         Si accende da Impostazioni → Tecnico → Azioni pianificate. -->
+    <field name="active" eval="False"/>
+  </record>
+</odoo>

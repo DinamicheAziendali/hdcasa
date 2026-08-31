@@ -37,6 +37,7 @@ from odoo.addons.integrations_core.connectors.base import (
     MarketplaceConnector,
     register_connector,
 )
+from odoo.addons.integrations_core.connectors.carrier_resolver import NON_TRADOTTO
 from odoo.addons.integrations_core.connectors.transport import (
     CsvSerializer,
     RestTransport,
@@ -164,6 +165,21 @@ class BricoBravoConnector(MarketplaceConnector):
     # Esposta alla base (carrier_codes) per il Selection dinamico del carrier.map.
     carrier_codes = BRICOBRAVO_CARRIERS
 
+    # Traduzione corriere dell'anagrafica -> codice BricoBravo (vedi
+    # BRICOBRAVO_CARRIERS). Poste Italiane e SDA restano distinti perché
+    # BricoBravo li tratta come due corrieri diversi.
+    carrier_brand_codes = {
+        "brt": "brt-it",
+        "gls": "gls-italy",
+        "poste": "poste-italiane",
+        "sda": "italy-sda",
+        "dhl": "dhl",
+        "ups": "ups",
+        "tnt": "tnt-it",
+        "dpd": "dpd",
+        "fedex": "fedex",
+    }
+
     def __init__(self, channel):
         super().__init__(channel)
         # Trasporto REST con il token di autenticazione nell'header.
@@ -266,22 +282,50 @@ class BricoBravoConnector(MarketplaceConnector):
             # qui come rete di sicurezza (import_order già protegge le sue fasi interne),
             # si conta come errore e si lascia traccia su order.map=error + job.log.
             for external_order in data:
+                # ⚠️ Il verdetto sta in una variabile PYTHON, non in un
+                # contatore: le variabili il rollback non le tocca, i
+                # contatori invece sopravviverebbero al rollback dicendo di
+                # aver importato cio' che e' tornato indietro.
+                result = False
                 try:
-                    result = self.import_order(external_order)
+                    # ⚠️ IL SAVEPOINT PER ORDINE, e perche' intercettare
+                    # l'eccezione NON basta: un errore che viene dal DATABASE
+                    # lascia la transazione ABORTITA. Da li' in poi ogni
+                    # ordine successivo cade per un guasto che non e' suo,
+                    # `last_pull` e la riga finale di registro non si
+                    # scrivono, e il commit della richiesta diventa un
+                    # ROLLBACK silenzioso che si porta via gli ordini gia'
+                    # importati — mentre i contatori dicono «importati N».
+                    with self.env.cr.savepoint():
+                        result = bool(self.import_order(external_order))
                 except Exception as exc:  # noqa: BLE001
                     result = False
+                    # Il codice esterno viene dal dizionario ricevuto, non da
+                    # un record: leggerlo qui non tocca il database.
                     failed_id = str(
                         external_order.get("id_order")
                         or external_order.get("id")
                         or external_order.get("vtex_id_order") or "")
                     if failed_id:
-                        self._record_order_error(
-                            failed_id, "Errore import ordine: %s" % exc)
+                        # ⚠️ La traccia passa comunque da `_al_riparo`, e non
+                        # e' ridondante: il savepoint qui sopra ha rimesso in
+                        # piedi la transazione, ma il flush d'ingresso di un
+                        # savepoint PUO' rompersi a sua volta. Un `False` e'
+                        # l'unica traccia che la scrittura non c'e' stata.
+                        if not self._al_riparo(
+                                self._record_order_error, failed_id,
+                                "Errore import ordine: %s" % exc):
+                            _logger.error(
+                                "BricoBravo: non si e' potuto registrare "
+                                "l'errore dell'ordine %s", failed_id)
                     else:
-                        self._log(JobLog, company, "error",
-                                  "Ordine senza identificativo non importato: %s"
-                                  % _truncate(json.dumps(external_order,
-                                                         ensure_ascii=False)))
+                        self._al_riparo(
+                            self._log, JobLog, company, "error",
+                            "Ordine senza identificativo non importato: %s"
+                            % _truncate(json.dumps(external_order,
+                                                   ensure_ascii=False)))
+                # ⚠️ SOLO ADESSO i contatori, e FUORI dal savepoint: non si
+                # conta cio' che il rollback si e' portato via.
                 if result:
                     total_imported += 1
                 else:
@@ -636,7 +680,28 @@ class BricoBravoConnector(MarketplaceConnector):
         ])
         recovered = 0
         for order_map in pending:
-            if self.mark_acquired(order_map.external_id, order_map=order_map):
+            # ⚠️ Il codice esterno si legge QUI, mentre la transazione e'
+            # certamente sana: dentro un gestore potrebbe essere ABORTITA, e
+            # li' anche solo LEGGERE un campo esplode.
+            esterno = order_map.external_id
+            preso = False
+            try:
+                # ⚠️ IL SAVEPOINT PER ORDINE — e prima qui non c'era nemmeno
+                # un gestore: un solo ordine che rompeva si portava via
+                # l'intera ripresa e, con essa, il pull che la chiama per
+                # primo. Un ordine rimasto indietro ieri fermava lo scarico
+                # di oggi.
+                with self.env.cr.savepoint():
+                    preso = bool(self.mark_acquired(esterno,
+                                                    order_map=order_map))
+            except Exception as exc:  # noqa: BLE001 - un ordine non blocca gli altri
+                _logger.warning(
+                    "BricoBravo ripresa acquired: ordine %s fallito, proseguo "
+                    "con gli altri: %s", esterno, exc)
+                continue
+            # ⚠️ Il contatore FUORI dal savepoint: non si conta cio' che il
+            # rollback si e' portato via.
+            if preso:
                 recovered += 1
         if pending:
             _logger.info("Retry acquired: %s/%s ordini recuperati per il canale %s",
@@ -740,12 +805,20 @@ class BricoBravoConnector(MarketplaceConnector):
         carrier_map = self.env["centrivo.carrier.map"].resolve_external_code(
             self.channel, source_model, source_res_id, self.channel.company_id)
         if not carrier_map:
-            self._log_shipment(
-                external_id, "error",
-                "Push spedizione #%s non eseguito: nessun mapping per il "
-                "vettore '%s' sul canale. Aggiungi la riga in "
-                "Integrations → Mapping Corrieri."
-                % (external_id, source_display))
+            if carrier_map.failure_reason == NON_TRADOTTO:
+                self._log_shipment(
+                    external_id, "error",
+                    "Push spedizione #%s non eseguito: il corriere %s non ha "
+                    "una traduzione per questo canale. Verifica la Copertura "
+                    "corrieri o aggiungi un'eccezione."
+                    % (external_id, carrier_map.brand_name or "?"))
+            else:
+                self._log_shipment(
+                    external_id, "error",
+                    "Push spedizione #%s non eseguito: il vettore '%s' non è "
+                    "collegato a nessun corriere. Aggiungi la riga in "
+                    "Integrations → Vettori."
+                    % (external_id, source_display))
             return False
 
         # --- COSTRUZIONE BODY ----------------------------------------------

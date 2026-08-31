@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+    <!--
+        Azione pianificata del connettore Temu. SPENTA, come tutte quelle del
+        progetto: si accende a mano quando si è pronti.
+
+        NB: lo scarico ordini e la comunicazione spedizioni NON hanno un cron
+        proprio. Usano quelli del nucleo ("Integrations: scarica ordini" e
+        "Integrations: comunica spedizioni"), che scorrono tutti i canali
+        attivi: Temu ci si innesta perché implementa pull_orders e
+        push_shipment. Un cron in più qui sarebbe un doppione.
+    -->
+    <!--
+        Prezzi e giacenze, invece, un cron proprio ce l'hanno: nel nucleo non
+        esiste una passata "allinea le offerte" su cui innestarsi.
+
+        SPENTO alla nascita: si accende quando la simulazione è stata spenta e
+        il contenuto degli invii è stato verificato. Il metodo salta i canali
+        col turno occupato registrandoli come "skip", non come errore: un
+        registro che grida al guasto perché qualcuno stava lavorando a mano si
+        impara a non leggerlo.
+    -->
+    <record id="cron_temu_push_offers" model="ir.cron">
+        <field name="name">Temu: sincronizza prezzi e giacenze</field>
+        <field name="model_id" ref="integrations_core.model_centrivo_channel"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_temu_push_offers()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">hours</field>
+        <field name="user_id" ref="base.user_root"/>
+        <field name="active" eval="False"/>
+    </record>
+
+    <record id="cron_temu_token_check" model="ir.cron">
+        <field name="name">Temu: controlla la scadenza del token</field>
+        <field name="model_id" ref="integrations_core.model_centrivo_channel"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_temu_check_token()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="user_id" ref="base.user_root"/>
+        <field name="active" eval="False"/>
+    </record>
+</odoo>

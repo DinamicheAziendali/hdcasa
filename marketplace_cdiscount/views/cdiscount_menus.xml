@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Copyright 2026 Angelo Margarella (www.hdcasa.it)
+    License OPL-1 (Odoo Proprietary License v1.0). See LICENSE file for full terms.
+
+    LE TRE PORTE DEL MODULO, tutte sotto «Integrations».
+
+    ⚠️ Questo file va per ULTIMO nel manifesto: un `menuitem` che nomina
+    un'azione ancora da caricare fa fallire l'installazione. Le tre azioni
+    stanno ognuna accanto alla propria vista, che e' la forma di casa
+    (`integrations_core`, `marketplace_kaufland`, `marketplace_temu`).
+
+    ⚠️ LE SEQUENZE. Sotto `integrations_core.menu_integrations_root` sono gia'
+    occupate: 10 Canali, 20 Ordini importati, 30 Mapping SKU, 32 Corrieri,
+    33 Vettori, 34 Eccezioni corrieri, 36 Copertura corrieri, 40 Log
+    operazioni, 45 Schede Temu, 46 Spedizioni Temu, 47 Offerte Kaufland,
+    50 Configurazione, 60 Campi feed ManoMano.
+    Restavano libere 48, 49 e 51-59. Prese 51-53 e non 48-49-51: le tre voci
+    di Cdiscount devono stare ATTACCATE — sono un percorso, non tre pagine
+    indipendenti — e con 48/49/51 «Configurazione» (50) si sarebbe infilata
+    in mezzo, spezzando il gruppo proprio fra il pacchetto e i contenuti.
+
+    ⚠️ E L'ORDINE DELLE TRE E' IL PERCORSO VERO, dall'alto in basso: prima si
+    guarda cosa e' fermo (Schede), poi cosa si puo' ancora perdere
+    (Pacchetti), e i Contenuti stanno per ultimi perche' sono un gesto
+    saltuario — si caricano quando arriva un file nuovo, non tutti i giorni.
+-->
+<odoo>
+  <!-- LA PAGINA. Risponde a «cosa e' fermo e perche'». -->
+  <menuitem id="menu_cdiscount_scheda"
+            name="Schede Cdiscount"
+            parent="integrations_core.menu_integrations_root"
+            action="action_cdiscount_scheda"
+            sequence="51"/>
+
+  <!-- ⚠️ QUESTA VOCE NON E' UN DI PIU'. Il pacchetto e' «la cosa che si puo'
+       perdere»: l'esito scade in tre giorni e un pacchetto ne porta fino a
+       10.000 di schede. Fino a questo compito l'elenco dei pacchetti non era
+       raggiungibile da NESSUNA parte dell'interfaccia — c'erano il modello,
+       le viste, i filtri sulla scadenza e l'avviso, e nessuna porta per
+       arrivarci. Il filtro «Oltre la scadenza, ancora aperti» e' l'unico
+       modo di accorgersi che il raccoglitore si e' inceppato PRIMA di
+       scoprire le schede senza verdetto: senza questa voce, nessuno lo
+       apriva mai. -->
+  <menuitem id="menu_cdiscount_pacchetto"
+            name="Pacchetti Cdiscount"
+            parent="integrations_core.menu_integrations_root"
+            action="action_cdiscount_pacchetto"
+            sequence="52"/>
+
+  <!-- ⚠️ E NEMMENO QUESTA. La procedura che carica il file dei contenuti
+       esisteva dal Compito 8 — modello, vista, controlli, riquadro degli
+       scarti — e non era raggiungibile da nessuna parte: senza contenuti
+       nessuna scheda parte, quindi senza questa voce il modulo non aveva
+       nemmeno un primo passo. -->
+  <menuitem id="menu_cdiscount_contenuti"
+            name="Contenuti Cdiscount"
+            parent="integrations_core.menu_integrations_root"
+            action="action_cdiscount_contenuti_wizard"
+            sequence="53"/>
+</odoo>

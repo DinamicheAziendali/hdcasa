@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Le offerte mandate a ManoMano.
+
+    ⚠️ Questa schermata è metà del valore del lavoro. Il difetto delle 4.117
+    offerte fantasma del 2026-08-25 è nato dal non avere NESSUN posto in Odoo
+    dove leggere cosa c'è davvero su ManoMano: si è scoperto solo esportando il
+    catalogo dal loro pannello. Da qui si vede, e i due filtri che contano —
+    «Da ritirare» e «Ritirate» — dicono a colpo d'occhio se il meccanismo sta
+    lavorando o si è inceppato.
+-->
+<odoo>
+
+    <record id="view_manomano_offer_list" model="ir.ui.view">
+        <field name="name">centrivo.manomano.offer.list</field>
+        <field name="model">centrivo.manomano.offer</field>
+        <field name="arch" type="xml">
+            <list string="Offerte ManoMano" create="false" delete="false"
+                  decoration-warning="stato == 'da_ritirare'"
+                  decoration-muted="stato == 'ritirata'">
+                <field name="channel_id"/>
+                <field name="sku"/>
+                <field name="contract"/>
+                <field name="product_id"/>
+                <field name="ultimo_prezzo"/>
+                <field name="ultima_quantita"/>
+                <field name="stato"/>
+                <field name="mandata_il"/>
+                <field name="ritirata_il" optional="hide"/>
+                <field name="ultimo_esito"/>
+                <field name="company_id" column_invisible="True"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_manomano_offer_form" model="ir.ui.view">
+        <field name="name">centrivo.manomano.offer.form</field>
+        <field name="model">centrivo.manomano.offer</field>
+        <field name="arch" type="xml">
+            <form string="Offerta ManoMano" create="false" delete="false">
+                <sheet>
+                    <group>
+                        <group string="Identità su ManoMano">
+                            <field name="channel_id"/>
+                            <field name="sku"/>
+                            <field name="contract"/>
+                            <field name="product_id"/>
+                        </group>
+                        <group string="Ultimo invio">
+                            <field name="ultimo_prezzo"/>
+                            <field name="ultima_quantita"/>
+                            <field name="stato"/>
+                            <field name="mandata_il"/>
+                            <field name="ritirata_il"/>
+                            <field name="ultimo_esito"/>
+                        </group>
+                    </group>
+                    <group string="Ultimo messaggio">
+                        <field name="ultimo_messaggio" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_manomano_offer_search" model="ir.ui.view">
+        <field name="name">centrivo.manomano.offer.search</field>
+        <field name="model">centrivo.manomano.offer</field>
+        <field name="arch" type="xml">
+            <search string="Offerte ManoMano">
+                <field name="sku"/>
+                <field name="product_id"/>
+                <field name="channel_id"/>
+                <filter name="attive" string="Attive"
+                        domain="[('stato', '=', 'attiva')]"/>
+                <!-- ⚠️ Se questo filtro resta popolato giro dopo giro, il
+                     ritiro non sta partendo: sono offerte vive su ManoMano di
+                     prodotti che in Odoo non hanno più il tag. -->
+                <filter name="da_ritirare" string="⚠️ Da ritirare"
+                        domain="[('stato', '=', 'da_ritirare')]"/>
+                <filter name="ritirate" string="Ritirate"
+                        domain="[('stato', '=', 'ritirata')]"/>
+                <separator/>
+                <filter name="incerte" string="⚠️ Esito incerto"
+                        domain="[('ultimo_esito', '=', 'incerto')]"/>
+                <filter name="rifiutate" string="Rifiutate da ManoMano"
+                        domain="[('ultimo_esito', '=', 'errore')]"/>
+                <separator/>
+                <!-- Una riga senza prodotto è un'offerta viva su ManoMano di
+                     qualcosa che in Odoo non esiste più: va guardata a mano. -->
+                <filter name="senza_prodotto" string="⚠️ Senza prodotto Odoo"
+                        domain="[('product_id', '=', False)]"/>
+                <group expand="0" string="Raggruppa per">
+                    <filter name="group_stato" string="Stato"
+                            context="{'group_by': 'stato'}"/>
+                    <filter name="group_canale" string="Canale"
+                            context="{'group_by': 'channel_id'}"/>
+                    <filter name="group_contract" string="Contract"
+                            context="{'group_by': 'contract'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_manomano_offer" model="ir.actions.act_window">
+        <field name="name">Offerte ManoMano</field>
+        <field name="res_model">centrivo.manomano.offer</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_attive': 1}</field>
+    </record>
+
+    <menuitem id="menu_manomano_offer"
+              name="Offerte ManoMano"
+              parent="integrations_core.menu_integrations_root"
+              action="action_manomano_offer"
+              sequence="55"/>
+</odoo>
