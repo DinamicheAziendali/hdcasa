@@ -24,7 +24,7 @@
 # sulla scheda del canale dice in ogni momento quali chiamate sono scoperte.
 {
     "name": "Marketplace - Temu",
-    "version": "18.0.7.0.1",
+    "version": "18.0.7.1.0",
     "license": "OPL-1",
     "category": "Connector",
     "summary": "Connettore Temu (Open API EU): aggancio delle schede esistenti, "
@@ -43,6 +43,7 @@
     # perché nominano modelli e azioni, non il contrario.
     "data": [
         "security/ir.model.access.csv",
+        "views/temu_menu_root.xml",
         "security/temu_security.xml",
         "data/ir_cron.xml",
         "views/temu_listing_views.xml",

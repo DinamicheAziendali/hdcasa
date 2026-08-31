@@ -8,6 +8,7 @@ prova senza Odoo con i test di tools/.
 """
 import logging
 import time
+from collections import OrderedDict
 from urllib.parse import quote
 
 from odoo import _, fields
@@ -17,6 +18,7 @@ from odoo.addons.integrations_core.connectors.base import (
     MarketplaceConnector,
     register_connector,
 )
+from odoo.addons.integrations_core.connectors.carrier_resolver import NON_TRADOTTO
 
 from .kaufland_catalogo import stato_scheda
 from .kaufland_client import (
@@ -43,6 +45,60 @@ API_UNITA = "/units/"
 # Kaufland rifiuta il GRUPPO INTERO se una sola riga non gli piace.
 API_UNITA_BLOCCO = "/units/bulk"
 API_PRODOTTI_EAN = "/products/ean/"
+
+# ⚠️ Gli ORDINI: sono DUE indirizzi e serve il secondo. `/orders/` porta solo
+# la testata (nessun cliente, nessuna riga); `/order-units/` porta tutto.
+# Misurato sul vero il 2026-08-31 sui primi due ordini tedeschi.
+API_ORDINI = "/orders/"
+API_ORDER_UNITS = "/order-units/"
+# ⚠️ La comunicazione della spedizione e' PER RIGA: l'indirizzo porta
+# `id_order_unit`, non `id_order`. Un ordine da tre articoli sono TRE chiamate.
+# Letto sulla guida, non misurato: `docs/kaufland-spedizione-guida.md`.
+API_RIGA_SPEDITA = "/order-units/%s/send"
+
+# ⚠️ Lo STATO da chiedere, e non e' un dettaglio di efficienza.
+# Una riga nasce in stato `open` e per 15 minuti Kaufland NASCONDE gli
+# indirizzi, apposta, per impedire di spedire troppo presto. Senza questo
+# filtro un ordine pescato nei suoi primi minuti entrerebbe in Odoo senza via,
+# senza citta' e senza CAP — e sovrascriverebbe con dei vuoti l'indirizzo buono
+# di un cliente gia' in anagrafica. A mano non capita quasi mai; con il cron
+# ogni 15 minuti capita. Il filtro e' quello che consiglia la loro guida.
+STATO_DA_SPEDIRE = "need_to_be_sent"
+
+# I corrieri ammessi da Kaufland: il campo `carrier_code` vuole il NOME PER
+# ESTESO, non una sigla. Lista letta sulla guida il 2026-08-31.
+# ⚠️ Due nomi sono scritti in modo strano e NON sono refusi nostri:
+# «Post Italiane» (senza la «e») e «Fedex» (con la «e» minuscola). Sono
+# esattamente i punti su cui una lettura puo' sbagliare — per questo esiste
+# l'eccezione di canale, che scavalca questa tabella senza un rilascio.
+KAUFLAND_CARRIERS = [(nome, nome) for nome in (
+    "Other", "Other Hauler", "AIT Home Delivery", "Allekurier",
+    "Amazon Logistics DE (Swiship)", "Amazon Shipping (IT)", "Asendia",
+    "Asendia Germany", "Austrian Post", "Ambro Express", "Bejot Logistics",
+    "BRT Bartolini", "Bursped", "Cainiao", "Cargoline", "Cargo International",
+    "China Post", "Chronopost", "Chukou1 Logistics", "Colissimo", "Colis Prive",
+    "CNE Express", "Correos", "Cubyn", "Czech Post", "Dachser", "Deutsche Post",
+    "DHL", "DHL 2 MH", "DHL Express", "DHL Ecommerce", "DHL Freight",
+    "DHL Hong Kong", "DHL Poland Domestic", "DPD", "DPD France", "DPD Hungary",
+    "DPD Netherlands", "DPD Romania", "DPD Czech Republic", "DPD Slovakia",
+    "DPD Austria", "DPD UK", "DPD Poland", "dtl", "DSV", "ECE", "Emons", "Evri",
+    "Fedex", "FedEx Poland Domestic", "Flyt Express", "4PX",
+    "Gebruder Weiss Germany", "Gebruder Weiss", "Geis", "Geis Poland", "GEL",
+    "Geodis", "GLS", "GLS Czech Republic", "GLS Italy", "GLS Poland",
+    "Go Express and Logistics", "GOFO", "Hellmann", "Hermes", "Hermes 2 MH",
+    "Hong Kong Post", "Hua Han Logistics", "IDS Logistik", "Iloxx",
+    "Iloxx Spedition", "InPost", "Jersey Post", "Kuehne & Nagel", "La Poste",
+    "Liccardi", "Maersk", "Mondial Relay", "Nexive", "Nova Post",
+    "Orlen Paczka", "Overseas Territory FR EMS", "Packeta", "Post Italiane",
+    "Post Haste", "PostNL", "PostNL 3S", "Pressio", "PPL", "Poland Post",
+    "Raben Group", "Redur Spain", "Rhenus", "Royal Mail", "Royal Shipments",
+    "Sailpost", "Schenker", "Seur", "SFC Service", "Slovakia Post",
+    "Slovak Parcel Service", "Spring GDS", "SGT Corriere Espresso",
+    "SPT Furniture Logistic", "SDA", "Spedition Guettler", "Siodemka", "Suus",
+    "Sunyou", "TNT", "TNT Click", "TNT France", "TNT Italy", "Trans FM",
+    "trans-o-flex", "TopTrans", "UBI Smart Parcel", "UPS", "Wanb Express",
+    "WeDo Logistics", "Winit", "WnDirect", "XL Courier", "Yanwen", "YDH",
+    "Yun Express", "Zufall")]
 # Quale secchio della ricognizione conta quale stato della scheda. Le quattro
 # voci sono TUTTE quelle che `kaufland_catalogo` puo' produrre (la quarta e' il
 # suo `None`): un quinto stato deve rompere qui e non finire in un secchio
@@ -156,6 +212,29 @@ GRUPPI_RIFIUTATI_DI_FILA = 2
 class KauflandConnector(MarketplaceConnector):
 
     default_base_url = KAUFLAND_URL
+
+    # I corrieri ammessi da Kaufland (vedi KAUFLAND_CARRIERS). Serve al
+    # Selection dell'ECCEZIONE di canale: senza questa lista l'eccezione non
+    # potrebbe essere compilata per Kaufland, e la via di fuga non esisterebbe.
+    carrier_codes = KAUFLAND_CARRIERS
+
+    # Traduzione corriere dell'anagrafica -> nome atteso da Kaufland.
+    #
+    # ⚠️ `dpd` resta VOLUTAMENTE non tradotto, come su Temu: in Italia quel
+    # servizio e' BRT, e la lista di Kaufland ha un «DPD» generico piu' otto
+    # varianti nazionali. Sceglierne una a caso manderebbe i pacchi sotto il
+    # corriere sbagliato. La Copertura corrieri lo mostrera' come «Manca», e
+    # sara' una persona a decidere: e' il comportamento giusto.
+    carrier_brand_codes = {
+        "brt": "BRT Bartolini",
+        "gls": "GLS Italy",
+        "poste": "Post Italiane",   # ⚠️ senza la «e»: e' come lo scrivono loro
+        "sda": "SDA",
+        "dhl": "DHL",
+        "ups": "UPS",
+        "tnt": "TNT Italy",
+        "fedex": "Fedex",           # ⚠️ «e» minuscola: idem
+    }
 
     # ------------------------------------------------------------------
     # Attrezzi
@@ -378,26 +457,515 @@ class KauflandConnector(MarketplaceConnector):
     # Gli ordini: non in questa consegna
     # ------------------------------------------------------------------
     def pull_orders(self):
-        """Gli ordini sono la Consegna 2: qui non c'è niente da scaricare.
+        """Scarica gli ordini del mercato corrente e li importa in Odoo.
 
-        ⚠️ NON solleva `NotImplementedError`, ed è tutto il punto di questo
-        metodo. `cron_pull_all_channels` (integrations_core) scorre TUTTI i
-        canali attivi e chiama `pull_orders()`; gli altri tre connettori lo
-        implementano, e un'eccezione qui diventerebbe una riga
-        `pull_orders / error` nel registro delle operazioni A OGNI
-        PASSAGGIO. I cron dei feed intercettano `NotImplementedError` e si
-        limitano a una riga informativa, questo no.
+        ⚠️ Due chiamate esistono, e serve la SECONDA: `/orders/` porta solo la
+        testata (nessun cliente, nessuna riga), `/order-units/` porta tutto.
+        Misurato sul vero il 2026-08-31.
 
-        ⚠️ E un registro che si riempie di rosso per una cosa che non è un
-        guasto è peggio di un registro vuoto: si impara a non leggerlo, e il
-        rosso vero — un'offerta di esito ignoto, un allineamento fallito —
-        passa in mezzo agli altri senza che nessuno lo veda. Nessuna riga di
-        registro, quindi: solo il log di sistema.
+        ⚠️ E Kaufland ragiona per RIGA: le righe si raggruppano per `id_order`,
+        e un ordine da tre articoli diventa UN `sale.order` con tre righe.
         """
-        _logger.info(
-            "Kaufland sul canale %s: gli ordini sono la Consegna 2, non c'è "
-            "niente da scaricare.", self.channel.display_name)
+        mercato = self._riga_mercato()
+        client = self._client()
+        esito = {"lette": 0, "ordini": 0, "importati": 0, "gia_importati": 0,
+                 "in_errore": 0, "interrotto": 0}
+
+        # ⚠️ `pagine()` solleva `LetturaInterrotta` se l'elenco si ferma a
+        # meta': un elenco parziale dato per completo farebbe risultare
+        # «nessun ordine nuovo» mentre ne mancano — e nessuno lo cercherebbe.
+        per_ordine = OrderedDict()
+        try:
+            # ⚠️ `status=need_to_be_sent` NON e' un'ottimizzazione: senza,
+            # entrerebbero anche le righe in stato `open`, che per i primi 15
+            # minuti arrivano SENZA INDIRIZZO (Kaufland lo nasconde apposta).
+            # Vedi STATO_DA_SPEDIRE.
+            for pagina in client.pagine("%s?storefront=%s&status=%s"
+                                        % (API_ORDER_UNITS, mercato.storefront,
+                                           STATO_DA_SPEDIRE)):
+                for riga in pagina:
+                    esito["lette"] += 1
+                    id_order = str(riga.get("id_order") or "").strip()
+                    if not id_order:
+                        continue
+                    per_ordine.setdefault(id_order, []).append(riga)
+        except LetturaInterrotta as errore:
+            esito["interrotto"] = 1
+            self._registra("pull_orders", "error", str(errore))
+            return esito
+
+        esito["ordini"] = len(per_ordine)
+        for id_order, righe in per_ordine.items():
+            # ⚠️ IL SAVEPOINT PER ORDINE: un ordine che rompe il database non
+            # deve annullare quelli gia' importati ne' fermare quelli dopo.
+            # Provato dentro Odoo su BricoBravo il 2026-08-30.
+            try:
+                with self.env.cr.savepoint():
+                    self._importa_ordine(mercato, id_order, righe, esito)
+            except Exception as errore:  # noqa: BLE001
+                esito["in_errore"] += 1
+                _logger.exception("Kaufland: ordine %s non importato", id_order)
+                self._al_riparo(self._segna_ordine_in_errore, mercato,
+                                id_order, str(errore)[:2000])
+        return esito
+
+    def _importa_ordine(self, mercato, id_order, righe, esito):
+        """Un ordine Kaufland diventa un `sale.order`. Idempotente."""
+        Mappa = self.env["centrivo.order.map"].sudo()
+        mappa = Mappa.search([("channel_id", "=", self.channel.id),
+                              ("external_id", "=", id_order)], limit=1)
+        if mappa and mappa.state == "imported":
+            # ⚠️ L'idempotenza: lo scarico si ripete, l'ordine no.
+            esito["gia_importati"] += 1
+            return
+
+        # --- I prodotti: `id_offer` E' il nostro codice articolo -----------
+        Prodotto = self.env["product.product"].sudo()
+        mancanti, prodotti = [], {}
+        for riga in righe:
+            codice = str(riga.get("id_offer") or "").strip()
+            prodotto = Prodotto.search(
+                [("default_code", "=", codice),
+                 ("company_id", "in", [False, self.channel.company_id.id])],
+                limit=1)
+            if not prodotto:
+                mancanti.append(codice)
+            else:
+                prodotti[riga.get("id_order_unit")] = prodotto
+
+        if mancanti:
+            # ⚠️ Decisione di Angelo (2026-08-31): il prodotto NON si crea mai
+            # da un ordine. L'ordine va in errore, e dev'essere VISIBILE — un
+            # ordine perso in silenzio e' peggio di uno rifiutato.
+            #
+            # ⚠️ Da NON confondere col prodotto senza giacenza: quello entra
+            # lo stesso, e la mancanza si guarda in magazzino. Qui manca il
+            # DATO, la' manca la MERCE.
+            self._segna_ordine_in_errore(
+                mercato, id_order,
+                _("Nessun prodotto in Odoo con codice %s: l'ordine non e' "
+                  "stato importato. Il prodotto non si crea da un ordine — "
+                  "va creato o corretto il codice, poi si ripete lo scarico.")
+                % ", ".join(sorted(set(mancanti))))
+            esito["in_errore"] += 1
+            return
+
+        cliente = self._cliente_da_riga(righe[0])
+        ordine = self.env["sale.order"].sudo().create({
+            "partner_id": cliente.id,
+            "company_id": self.channel.company_id.id,
+            "team_id": self.channel.team_id.id or False,
+            # ⚠️ Dal MERCATO, non dal canale: l'IVA e' per Paese.
+            "fiscal_position_id": mercato.fiscal_position_id.id or False,
+            "client_order_ref": id_order,
+            "order_line": [(0, 0, {
+                "product_id": prodotti[riga.get("id_order_unit")].id,
+                "product_uom_qty": 1,
+                "price_unit": self._prezzo_riga(riga),
+            }) for riga in righe],
+        })
+        # Decisione di Angelo: nasce gia' confermato.
+        ordine.action_confirm()
+        self._controlla_totale(ordine, id_order, righe)
+
+        valori = {"state": "imported", "sale_order_id": ordine.id,
+                  "error_message": False}
+        if mappa:
+            mappa.write(valori)
+        else:
+            mappa = Mappa.create(dict(
+                valori, channel_id=self.channel.id, external_id=id_order,
+                company_id=self.channel.company_id.id))
+
+        self._registra_righe(mercato, mappa, ordine, righe, prodotti)
+        esito["importati"] += 1
+
+    def _registra_righe(self, mercato, mappa, ordine, righe, prodotti):
+        """Una riga `centrivo.kaufland.order.unit` per ogni riga Kaufland."""
+        Unita = self.env["centrivo.kaufland.order.unit"].sudo()
+        per_prodotto = {r.product_id.id: r for r in ordine.order_line}
+        for riga in righe:
+            id_unit = str(riga.get("id_order_unit") or "").strip()
+            if not id_unit:
+                continue
+            prodotto = prodotti.get(riga.get("id_order_unit"))
+            Unita.create({
+                "market_id": mercato.id,
+                "order_map_id": mappa.id,
+                "id_order_unit": id_unit,
+                "id_order": str(riga.get("id_order") or ""),
+                "id_offer": str(riga.get("id_offer") or ""),
+                "sale_line_id": (per_prodotto.get(prodotto.id).id
+                                 if prodotto and per_prodotto.get(prodotto.id)
+                                 else False),
+                "stato_kaufland": riga.get("status") or "",
+                "prezzo": (riga.get("price") or 0) / 100.0,
+                "ricavo_netto": (riga.get("revenue_net") or 0) / 100.0,
+                "scade_il": self._data_iso(
+                    riga.get("delivery_time_expires_iso")),
+            })
+
+    @staticmethod
+    def _prezzo_riga(riga):
+        """Il prezzo da mettere in `price_unit`: il LORDO, IVA inclusa.
+
+        ⚠️ **In HD casa si lavora a prezzi IVA inclusa**: le aliquote sono
+        configurate come «IVA inclusa» (`price_include`), e per la Germania e'
+        «19% IVA inclusa». Con un'imposta cosi', `price_unit` porta il prezzo
+        pagato dal cliente ed e' **Odoo a scorporare** l'IVA. Precisato da
+        Angelo il 2026-08-31.
+
+        ⚠️ **E qui mi ero sbagliato prima.** Sullo stage l'ordine da 230,00 €
+        nasceva da 264,50, e ne avevo dedotto che il prezzo andasse scorporato
+        a mano. La misura era giusta, la conclusione no: quel 264,50 veniva da
+        un'imposta di prova al 15% **che non e' «IVA inclusa»** e quindi si
+        somma. Il difetto non era il prezzo: era l'imposta.
+
+        Quindi qui si scrive il lordo, tale e quale, e **se l'imposta e'
+        configurata male il totale non torna e la guardia lo dice** — che e' il
+        verso giusto: si aggiusta l'imposta, non si piega il prezzo.
+
+        `price` arriva in CENTESIMI: 23000 sono 230,00 €.
+        """
+        return (riga.get("price") or 0) / 100.0
+
+    def _controlla_totale(self, ordine, id_order, righe):
+        """Il totale dell'ordine deve tornare con quello che dice Kaufland.
+
+        ⚠️ Serve perche' l'imponibile da solo non basta: se la posizione
+        fiscale del mercato non applica l'aliquota che Kaufland ha usato, il
+        totale non torna lo stesso — e non lo dice nessuno. Un ordine che in
+        Odoo vale meno (o piu') di quello che il cliente ha pagato e' un errore
+        che si scopre in contabilita', mesi dopo.
+
+        L'ordine resta IMPORTATO: esiste, il cliente ha comprato. Ma la
+        differenza finisce nel registro delle operazioni, dove si guarda.
+        """
+        atteso = sum((r.get("price") or 0) for r in righe) / 100.0
+        trovato = ordine.amount_total
+        if abs(atteso - trovato) <= 0.01:
+            return True
+        self._registra(
+            "pull_orders", "error",
+            _("Ordine %(ordine)s importato, ma il totale NON torna: in Odoo "
+              "%(trovato).2f, su Kaufland %(atteso).2f.\n"
+              "⚠️ Il prezzo scritto e' quello pagato dal cliente, IVA "
+              "INCLUSA: se il totale e' PIU' ALTO, l'imposta applicata non e' "
+              "configurata come «IVA inclusa» e si sta sommando a un prezzo "
+              "che ce l'ha gia' dentro. Se e' piu' basso o diverso, l'aliquota "
+              "non e' quella usata da Kaufland (%(aliquota)s%%).\n"
+              "L'ordine e' corretto nei prodotti e nelle quantita': e' "
+              "l'imposta a non combaciare, e va sistemata prima di "
+              "fatturare.") % {
+                  "ordine": id_order, "trovato": trovato, "atteso": atteso,
+                  "aliquota": righe[0].get("vat") if righe else "?"},
+            external_id=id_order)
+        return False
+
+    @staticmethod
+    def _data_iso(testo):
+        """La data ISO di Kaufland come Datetime di Odoo, o False."""
+        if not testo:
+            return False
+        try:
+            return fields.Datetime.to_datetime(
+                str(testo).replace("Z", "").replace("T", " "))
+        except Exception:  # noqa: BLE001 - una data storta non ferma un ordine
+            return False
+
+    def _cliente_da_riga(self, riga):
+        """Il `res.partner` del compratore, creato se non c'e'.
+
+        ⚠️ `street` e `house_number` arrivano SEPARATI: tenuti separati, il
+        numero civico si perde e il pacco non arriva.
+
+        ⚠️ E l'email non e' quella vera: Kaufland ne da' una di INOLTRO
+        anonimo (`…@kaufland-marktplatz.de`). Va bene come chiave e per
+        scrivere al cliente, ma non e' un recapito personale.
+        """
+        Partner = self.env["res.partner"].sudo()
+        indirizzo = riga.get("shipping_address") or {}
+        compratore = riga.get("buyer") or {}
+        email = (compratore.get("email") or "").strip()
+
+        nome = " ".join(x for x in (indirizzo.get("first_name"),
+                                    indirizzo.get("last_name")) if x).strip()
+        nome = nome or (indirizzo.get("company_name") or "").strip()             or email or _("Cliente Kaufland")
+
+        esistente = Partner.search([("email", "=", email)], limit=1)             if email else Partner.browse()
+        via = " ".join(x for x in (indirizzo.get("street"),
+                                   indirizzo.get("house_number")) if x).strip()
+        paese = self.env["res.country"].sudo().search(
+            [("code", "=", (indirizzo.get("country") or "").upper())], limit=1)
+        valori = {
+            "name": nome,
+            "street": via or False,
+            "street2": indirizzo.get("additional_field") or False,
+            "zip": indirizzo.get("postcode") or False,
+            "city": indirizzo.get("city") or False,
+            "country_id": paese.id if paese else False,
+            "phone": indirizzo.get("phone") or False,
+            "email": email or False,
+        }
+        if esistente:
+            # ⚠️ Su un cliente che c'e' gia' si scrivono SOLO i campi che
+            # abbiamo davvero. Scrivere anche i vuoti CANCELLEREBBE il suo
+            # indirizzo buono, e una riga senza indirizzo non e' un caso di
+            # scuola: per i primi 15 minuti Kaufland li nasconde apposta (vedi
+            # STATO_DA_SPEDIRE). Il filtro di stato dovrebbe gia' impedirlo;
+            # questa e' la seconda cintura, perche' il prezzo di sbagliarsi e'
+            # un pacco che non arriva.
+            pieni = {chiave: valore for chiave, valore in valori.items()
+                     if valore}
+            if pieni:
+                esistente.write(pieni)
+            return esistente
+        return Partner.create(valori)
+
+    def _segna_ordine_in_errore(self, mercato, id_order, messaggio):
+        """La riga di mappa in errore: e' il posto dove si va a guardare."""
+        Mappa = self.env["centrivo.order.map"].sudo()
+        mappa = Mappa.search([("channel_id", "=", self.channel.id),
+                              ("external_id", "=", id_order)], limit=1)
+        valori = {"state": "error", "error_message": messaggio}
+        if mappa:
+            mappa.write(valori)
+        else:
+            Mappa.create(dict(valori, channel_id=self.channel.id,
+                              external_id=id_order,
+                              company_id=self.channel.company_id.id))
+        self._registra("pull_orders", "error",
+                           "Ordine %s: %s" % (id_order, messaggio))
         return True
+
+    # ------------------------------------------------------------------
+    # LA SPEDIZIONE — Consegna 2, Compito 5. Trigger MANUALE.
+    # ------------------------------------------------------------------
+    def push_shipment(self, order_map):
+        """Comunica a Kaufland che l'ordine e' partito. UNA CHIAMATA PER RIGA.
+
+        ⚠️ **Nessuna riga di questo metodo e' stata provata contro Kaufland
+        vero.** La forma viene dalla loro guida (`docs/kaufland-spedizione-
+        guida.md`), non da una misura: Kaufland non ha un ambiente di prova, e
+        questa chiamata SCRIVE su ordini di clienti veri. Il primo giro si fa a
+        mano, su un ordine, con qualcuno che guarda il portale.
+
+        Da dove vengono i dati — tutti da campi PUBBLICI di Odoo:
+
+        - il `sale.order` della mappa, e i suoi trasferimenti in stato `done`
+          con `carrier_tracking_ref` valorizzato (campo NATIVO: chi l'abbia
+          scritto, ShipTracker o una persona, non ci riguarda);
+        - il codice corriere dall'impianto del tronco (vettore → corriere →
+          codice del canale), con l'eccezione di canale che vince sempre.
+
+        ⚠️ **L'esito incerto non e' un successo, e non e' nemmeno un
+        fallimento.** Se la risposta e' un 5xx o non arriva, la richiesta puo'
+        essere arrivata lo stesso: la riga NON si segna comunicata (si
+        perderebbe la spedizione) ma non si ritenta da soli (si duplicherebbe).
+        Resta li', e lo decide una persona. Un numero di tracciamento riusato
+        e' un rifiuto, gia' misurato su Temu.
+        """
+        esterno = order_map.external_id
+
+        # ⚠️ IL CANCELLO. Dal cron non si parte finche' una persona non ha
+        # visto sul portale che il primo invio e' andato: queste chiamate non
+        # sono mai state provate contro Kaufland vero, e scrivono su ordini di
+        # clienti veri. A mano si passa: il primo invio E' quel gesto.
+        if not (self.channel.sudo().kaufland_spedizione_provata
+                or self.env.context.get("kaufland_spedizione_a_mano")):
+            return self._spedizione_ferma(
+                esterno, _("il primo invio a Kaufland si fa A MANO, dal "
+                           "pulsante sull'ordine. Quando sul portale l'ordine "
+                           "risultera' spedito, apri «Spedizione verificata "
+                           "sul portale» sulla scheda del canale, e da li' in "
+                           "poi ci pensera' anche l'automatismo"))
+
+        righe = self.env["centrivo.kaufland.order.unit"].sudo().search(
+            [("order_map_id", "=", order_map.id)])
+
+        # --- Precondizioni: meglio non chiamare che chiamare al buio -------
+        if order_map.state != "imported" or not order_map.sale_order_id:
+            return self._spedizione_ferma(
+                esterno, _("l'ordine non risulta importato, o non ha un ordine "
+                           "di vendita collegato"))
+        if not righe:
+            return self._spedizione_ferma(
+                esterno, _("non ci sono righe Kaufland registrate per questo "
+                           "ordine: senza di quelle non si sa cosa comunicare"))
+
+        da_fare = righe.filtered(lambda r: not r.spedizione_comunicata)
+        if not da_fare:
+            self._registra("push_shipment", "skip",
+                           _("Ordine %s: spedizione gia' comunicata per tutte "
+                             "le righe.") % esterno, external_id=esterno)
+            self._chiudi_spedizione(order_map, righe)
+            return True
+
+        trasferimenti = order_map.sale_order_id.picking_ids.filtered(
+            lambda p: p.state == "done" and (p.carrier_tracking_ref or "").strip())
+        if not trasferimenti:
+            return self._spedizione_ferma(
+                esterno, _("nessuna spedizione pronta: serve un trasferimento "
+                           "in stato «Fatto» con il numero di tracciamento"))
+
+        codice = self._codice_corriere(trasferimenti, esterno)
+        if not codice:
+            return False
+
+        # ⚠️ I numeri di tracciamento si uniscono con la VIRGOLA: e' cosi' che
+        # Kaufland vuole il multi-collo, e `tracking_numbers` e' una STRINGA
+        # malgrado il plurale.
+        # ⚠️ Il limite di oggi, detto perche' si sappia: i numeri vanno TUTTI
+        # su OGNI riga. Non proviamo a indovinare quale collo porti quale
+        # articolo — un'attribuzione sbagliata darebbe al cliente il
+        # tracciamento del pacco di un altro articolo, e non c'e' modo di
+        # provarla finche' non passa un multi-collo vero.
+        numeri = ",".join(dict.fromkeys(
+            (t.carrier_tracking_ref or "").strip() for t in trasferimenti
+            if (t.carrier_tracking_ref or "").strip()))
+
+        client = self._client()
+        corpo = {"carrier_code": codice, "tracking_numbers": numeri}
+        for riga in da_fare:
+            # ⚠️ Ogni riga per conto suo: una che salta in aria non deve
+            # portarsi via quelle gia' accettate da Kaufland. Se la richiesta
+            # intera venisse annullata, al giro dopo le rimanderemmo — cioe'
+            # esattamente il doppione che stiamo evitando.
+            try:
+                self._comunica_riga(client, order_map, riga, corpo)
+            except Exception as errore:  # noqa: BLE001
+                _logger.exception("Kaufland: spedizione della riga %s",
+                                  riga.id_order_unit)
+                # ⚠️ Posizionali: `_al_riparo` di questo connettore prende
+                # solo *argomenti, e il payload sta in mezzo (None qui).
+                self._al_riparo(
+                    self._registra, "push_shipment", "error",
+                    _("Riga %s: %s") % (riga.id_order_unit, str(errore)[:2000]),
+                    None, esterno)
+        self._chiudi_spedizione(order_map, righe)
+        return bool(order_map.shipment_pushed)
+
+    def _comunica_riga(self, client, order_map, riga, corpo):
+        """Una riga, una chiamata. Segna la riga SOLO su un verdetto certo."""
+        esterno = order_map.external_id
+        risposta = client.chiama(
+            "PATCH", API_RIGA_SPEDITA % quote(str(riga.id_order_unit), safe=""),
+            corpo)
+
+        incerta = self._esito_incerto(risposta)
+        if incerta:
+            # ⚠️ Ne' fatta ne' fallita: la riga resta da comunicare, e a
+            # deciderlo sara' una persona che guarda il portale.
+            self._registra(
+                "push_shipment", "error",
+                _("Riga %s: esito INCERTO, %s. Non e' stata segnata come "
+                  "comunicata: prima di ripremere, controlla sul portale "
+                  "Kaufland se la spedizione risulta gia' registrata.")
+                % (riga.id_order_unit, incerta),
+                external_id=esterno)
+            return False
+
+        if not risposta.ok:
+            self._registra(
+                "push_shipment", "error",
+                # ⚠️ `_motivo_http` e non `risposta.messaggio`: il secondo da'
+                # solo il testo di Kaufland, senza lo stato. Un rifiuto a corpo
+                # vuoto lascerebbe nel registro una riga che non dice niente, e
+                # un 400 (colpa del dato) diventerebbe indistinguibile da tutto
+                # il resto proprio mentre si cerca di capire cosa correggere.
+                _("Riga %s rifiutata da Kaufland: %s")
+                % (riga.id_order_unit, self._motivo_http(risposta)),
+                external_id=esterno)
+            return False
+
+        riga.sudo().spedizione_comunicata = True
+        self._registra("push_shipment", "success",
+                       _("Riga %s: spedizione comunicata (%s, %s).")
+                       % (riga.id_order_unit, corpo["carrier_code"],
+                          corpo["tracking_numbers"]),
+                       external_id=esterno)
+        return True
+
+    def _esito_incerto(self, risposta):
+        """Il motivo per cui il verdetto NON e' certo, oppure None se lo e'.
+
+        ⚠️ **Non e' un doppione di `_causa_incerta`, e questa nota esiste
+        perche' ci sono cascato.** Quella, in questo connettore, non risponde
+        MAI None: e' scritta per un chiamante che ha gia' stabilito che la
+        risposta e' un rifiuto, e si limita a spiegare perche' l'esito e'
+        ignoto. Chiamata su un 200 restituisce comunque un motivo — e la
+        spedizione appena accettata da Kaufland risulterebbe «incerta»,
+        cioe' da rifare. Il primo giro dentro Odoo ha fatto cadere quattro
+        banchi esattamente su questo.
+
+        Qui la regola sta scritta per esteso, una volta sola:
+
+        - risposta a posto        → verdetto CERTO, e positivo;
+        - stato 0 oppure 5xx      → non si sa se sia arrivata;
+        - qualunque altro rifiuto → verdetto CERTO, e negativo (un 400 e'
+          colpa del dato, e ridirlo «incerto» inviterebbe a ritentare).
+        """
+        if risposta.ok:
+            return None
+        if risposta.stato == 0 or risposta.stato >= 500:
+            return self._causa_incerta(risposta)
+        return None
+
+    def _codice_corriere(self, trasferimenti, esterno):
+        """Il nome del corriere atteso da Kaufland, o None dopo aver detto perche'.
+
+        ⚠️ I trasferimenti devono puntare TUTTI allo stesso corriere: il corpo
+        ne porta uno solo. Due corrieri diversi sullo stesso ordine non si
+        possono esprimere, e sceglierne uno darebbe al cliente il tracciamento
+        sotto il vettore sbagliato.
+        """
+        codici = {}
+        for trasferimento in trasferimenti:
+            modello, id_sorgente, nome = (
+                self.channel._picking_carrier_source(trasferimento))
+            if not id_sorgente:
+                self._spedizione_ferma(
+                    esterno, _("il trasferimento %s non ha un vettore da cui "
+                               "ricavare il corriere") % trasferimento.name)
+                return None
+            esito = self.env["centrivo.carrier.map"].resolve_external_code(
+                self.channel, modello, id_sorgente, self.channel.company_id)
+            if not esito:
+                if esito.failure_reason == NON_TRADOTTO:
+                    self._spedizione_ferma(
+                        esterno,
+                        _("il corriere «%s» non ha un nome per Kaufland. "
+                          "Guarda in Corrieri → Copertura corrieri, oppure "
+                          "aggiungi un'eccezione di canale.")
+                        % (esito.brand_name or "?"))
+                else:
+                    self._spedizione_ferma(
+                        esterno,
+                        _("il vettore «%s» non e' collegato a nessun corriere. "
+                          "Aggiungi la riga in Corrieri → Vettori.") % nome)
+                return None
+            codici[esito.external_code] = True
+        if len(codici) > 1:
+            self._spedizione_ferma(
+                esterno, _("i colli di questo ordine viaggiano con corrieri "
+                           "diversi (%s), e Kaufland ne accetta uno solo per "
+                           "riga") % ", ".join(sorted(codici)))
+            return None
+        return next(iter(codici))
+
+    def _chiudi_spedizione(self, order_map, righe):
+        """L'ordine e' «spedito» solo quando NON manca piu' nessuna riga."""
+        tutte = all(riga.spedizione_comunicata for riga in righe)
+        if tutte and not order_map.shipment_pushed:
+            order_map.sudo().shipment_pushed = True
+        return tutte
+
+    def _spedizione_ferma(self, esterno, motivo):
+        """Scrive perche' non si e' comunicato niente, e si ferma. Sempre False."""
+        self._registra("push_shipment", "error",
+                       _("Spedizione dell'ordine %s non comunicata: %s.")
+                       % (esterno, motivo), external_id=esterno)
+        return False
 
     # ------------------------------------------------------------------
     # Riaggancio
@@ -415,7 +983,6 @@ class KauflandConnector(MarketplaceConnector):
         """
         mercato = self._mercato()
         client = self._client()
-        Mappa = self.env["centrivo.sku.map"].sudo()
         Offerta = self.env["kaufland.offer"].sudo()
         Prodotto = self.env["product.product"].sudo()
         azienda = self.channel.company_id
@@ -516,18 +1083,28 @@ class KauflandConnector(MarketplaceConnector):
                                                 conteso)
                             continue
 
-                        esistente = Mappa.search([
-                            ("channel_id", "=", self.channel.id),
-                            ("external_code", "=", id_unit)], limit=1)
-                        if not esistente:
-                            Mappa.create({
-                                "channel_id": self.channel.id,
-                                "external_code": id_unit,
-                                "product_id": prodotto.id,
-                                "company_id": azienda.id,
-                            })
-                        elif esistente.product_id != prodotto:
-                            esistente.product_id = prodotto.id
+                        # ⚠️ QUI SI SCRIVEVA IN `centrivo.sku.map`, e non si
+                        # fa piu' (2026-08-31, segnalato da Angelo guardando
+                        # le 332 righe comparse la' dentro).
+                        #
+                        # Tre ragioni, e la terza da sola basta:
+                        #  1. NESSUNO le rileggeva: ne' questo modulo ne' il
+                        #     tronco. Erano scritture a vuoto.
+                        #  2. Duplicavano cio' che sta gia' in
+                        #     `kaufland.offer`, che tiene prodotto e id_unit
+                        #     con i vincoli giusti.
+                        #  3. ⚠️ La CHIAVE era quella sbagliata per lo scopo:
+                        #     si scriveva `external_code = id_unit`
+                        #     (l'identificativo dell'offerta, 392842971623),
+                        #     mentre negli ORDINI arriva `id_offer` — il
+                        #     nostro codice articolo (HDC00041). Anche se
+                        #     qualcuno le avesse lette, non avrebbero mai
+                        #     fatto combaciare niente.
+                        #
+                        # E il danno vero era sulla leggibilita': la mappa SKU
+                        # e' la tabella delle ECCEZIONI messe a mano, quella
+                        # che si apre per capire perche' un ordine non aggancia.
+                        # Con 332 righe automatiche dentro, non si legge piu'.
 
                         # `riga_unit` senza prodotto e' una riga rimasta
                         # orfana (product_id e' `ondelete="set null"`): si
@@ -1764,7 +2341,6 @@ class KauflandConnector(MarketplaceConnector):
 
         client = self._client()
         Offerta = self.env["kaufland.offer"].sudo()
-        Mappa = self.env["centrivo.sku.map"].sudo()
         listino = canale.pricelist_selling_id
         # ⚠️ Guardia 3 — senza listino di vendita ogni prodotto risulterebbe
         # «senza prezzo»: N righe marcate «saltato» con un messaggio che
@@ -2090,16 +2666,10 @@ class KauflandConnector(MarketplaceConnector):
                                        motivo, external_id=riferimento)
                         continue
 
-                    esistente = Mappa.search([
-                        ("channel_id", "=", self.channel.id),
-                        ("external_code", "=", identificativo)], limit=1)
-                    if not esistente:
-                        Mappa.create({"channel_id": self.channel.id,
-                                      "external_code": identificativo,
-                                      "product_id": prodotto.id,
-                                      "company_id": canale.company_id.id})
-                    elif esistente.product_id.id != prodotto.id:
-                        esistente.product_id = prodotto.id
+                    # ⚠️ Anche qui si scriveva in `centrivo.sku.map`, e vale
+                    # la stessa ragione del riaggancio: nessuno rilegge quelle
+                    # righe, duplicano `kaufland.offer`, e la chiave e' quella
+                    # dell'OFFERTA — non quella che arriva negli ordini.
 
                     riga.write({"id_unit": identificativo,
                                 "ean": ean,

@@ -60,8 +60,8 @@
     </record>
 
     <menuitem id="menu_manomano_feed_field"
-              name="Campi feed ManoMano"
-              parent="integrations_core.menu_integrations_root"
+              name="Campi feed"
+              parent="menu_manomano_root"
               action="action_manomano_feed_field"
               sequence="60"/>
 </odoo>

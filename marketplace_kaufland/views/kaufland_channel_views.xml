@@ -45,6 +45,7 @@
               <list editable="bottom">
                 <field name="storefront"/>
                 <field name="shipping_group_id"/>
+                <field name="fiscal_position_id"/>
                 <field name="warehouse_id" optional="hide"/>
                 <!-- PRIMA il numero, POI il riaggancio: finche' la soglia
                      vale 0 il cancello NON si apre, e il primo giro si
@@ -55,6 +56,29 @@
                 <field name="active" optional="hide"/>
               </list>
             </field>
+          </group>
+
+          <group string="Spedizioni" groups="base.group_system">
+            <!-- ⚠️ IL CANCELLO DELLA SPEDIZIONE. Finche' e' spento, la
+                 spedizione Kaufland parte SOLO dal pulsante sull'ordine: dal
+                 cron non parte niente. Il motivo e' che queste chiamate non
+                 sono mai state provate contro Kaufland vero — loro non hanno
+                 un ambiente di prova, e si scrive su ordini di clienti veri.
+                 Si apre dopo aver visto SUL PORTALE che il primo invio e'
+                 andato. E' l'unica verifica che nessun banco puo' fare. -->
+            <field name="kaufland_spedizione_provata" readonly="1"/>
+            <field name="kaufland_spedizione_provata_il" readonly="1"
+                   invisible="not kaufland_spedizione_provata"/>
+            <button name="action_kaufland_apri_cancello_spedizione" type="object"
+                    string="Ho verificato sul portale: attiva l'automatismo"
+                    class="btn-primary" groups="base.group_system"
+                    invisible="kaufland_spedizione_provata"
+                    confirm="Confermi di aver visto SUL PORTALE Kaufland che l'ordine risulta spedito? Da qui in poi le spedizioni partiranno anche in automatico."
+                    help="Da premere solo dopo aver guardato il portale Kaufland. Prima di allora la spedizione parte solo a mano, un ordine per volta."/>
+            <button name="action_kaufland_chiudi_cancello_spedizione" type="object"
+                    string="Torna al solo invio a mano"
+                    groups="base.group_system"
+                    invisible="not kaufland_spedizione_provata"/>
           </group>
 
           <group string="Operazioni">

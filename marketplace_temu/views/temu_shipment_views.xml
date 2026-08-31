@@ -30,8 +30,8 @@
     </record>
 
     <menuitem id="menu_temu_shipment"
-              name="Spedizioni Temu"
-              parent="integrations_core.menu_integrations_root"
+              name="Spedizioni"
+              parent="menu_temu_root"
               action="action_temu_shipment"
               sequence="46"/>
 </odoo>

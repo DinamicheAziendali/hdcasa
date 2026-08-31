@@ -83,8 +83,8 @@
     </record>
 
     <menuitem id="menu_temu_listing"
-              name="Schede Temu"
-              parent="integrations_core.menu_integrations_root"
+              name="Schede"
+              parent="menu_temu_root"
               action="action_temu_listing"
               sequence="45"/>
 </odoo>

@@ -66,6 +66,27 @@ class CentrivoChannel(models.Model):
         compute="_compute_kaufland_cancello_aperto",
         groups="base.group_system")
 
+    # ⚠️ IL CANCELLO DELLA SPEDIZIONE. Nasce CHIUSO.
+    #
+    # La comunicazione della spedizione a Kaufland non e' mai stata provata
+    # contro Kaufland vero: la forma viene dalla loro guida, e Kaufland non ha
+    # un ambiente di prova. Il cron delle spedizioni del tronco scorre TUTTI i
+    # canali attivi: il giorno che qualcuno lo accende per BricoBravo, Kaufland
+    # ci finirebbe dentro da solo e comincerebbe a mandare in automatico
+    # chiamate mai verificate, su ordini di clienti veri — dove un numero di
+    # tracciamento riusato e' un rifiuto.
+    #
+    # Chiuso: dal cron non parte niente, A MANO si'. Il primo invio e' un gesto
+    # di una persona che guarda il portale, ed e' quella persona ad aprire.
+    kaufland_spedizione_provata = fields.Boolean(
+        string="Spedizione verificata sul portale", default=False, copy=False,
+        groups="base.group_system",
+        help="Finche' e' spento, la spedizione Kaufland parte SOLO a mano. Si "
+             "accende dopo aver visto sul portale Kaufland che il primo invio "
+             "e' risultato davvero spedito.")
+    kaufland_spedizione_provata_il = fields.Datetime(
+        string="Verificata il", copy=False, groups="base.group_system")
+
     kaufland_handling_time = fields.Integer(
         string="Giorni di lavorazione (ripiego)", default=3,
         help="Usato SOLO quando il prodotto non dichiara il suo tempo di "
@@ -183,6 +204,84 @@ class CentrivoChannel(models.Model):
                 canale.kaufland_market_ids.filtered("active").mapped(
                     "riagganciato"))
 
+    def action_pull_orders(self):
+        """Lo scarico ordini passa per i MERCATI, sui canali Kaufland.
+
+        ⚠️ Il metodo del tronco chiama `pull_orders()` diritto, e su Kaufland
+        quello lavora sul mercato corrente: chiamato senza, solleverebbe
+        «operazione avviata senza un mercato» — e siccome `cron_pull_all_channels`
+        scorre TUTTI i canali attivi, quell'eccezione arriverebbe a ogni
+        passaggio del cron, su un canale che non ha fatto niente di male.
+
+        Gli altri connettori restano com'erano: qui si devia SOLO Kaufland.
+        """
+        kaufland = self.filtered(lambda c: c.connector_code == "kaufland"
+                                 and c.active)
+        notifica = None
+        for canale in kaufland:
+            riunito = self._kaufland_riunisci(
+                canale._get_connector().per_mercato("pull_orders"))
+            canale.last_pull = fields.Datetime.now()
+            notifica = canale._kaufland_notifica_ordini(riunito)
+        altri = self - kaufland
+        if altri:
+            return super(CentrivoChannel, altri).action_pull_orders()
+        # ⚠️ La notifica torna al pulsante «Scarica ordini» che sta GIA' in
+        # cima alla scheda del canale (vista del tronco). Il cron chiama lo
+        # stesso metodo e ignora il valore di ritorno: nessun effetto la'.
+        return notifica or True
+
+    def action_kaufland_apri_cancello_spedizione(self):
+        """Apre il cancello: da qui Kaufland rientra nell'automatismo.
+
+        ⚠️ Si preme DOPO aver guardato il portale Kaufland e aver visto che
+        l'ordine risulta spedito davvero. Non e' una formalita': e' l'unica
+        verifica che nessun banco puo' fare al posto nostro.
+        """
+        for canale in self.filtered(lambda c: c.connector_code == "kaufland"):
+            canale.sudo().write({
+                "kaufland_spedizione_provata": True,
+                "kaufland_spedizione_provata_il": fields.Datetime.now(),
+            })
+        return True
+
+    def action_kaufland_chiudi_cancello_spedizione(self):
+        """Richiude il cancello: si torna al solo invio a mano."""
+        for canale in self.filtered(lambda c: c.connector_code == "kaufland"):
+            canale.sudo().kaufland_spedizione_provata = False
+        return True
+
+    def _kaufland_notifica_ordini(self, esito):
+        """Il messaggio dello scarico ordini, in una frase."""
+        self.ensure_one()
+        if esito.get("errori"):
+            return self._kaufland_guasto(_("Ordini Kaufland"), esito)
+        messaggio = _(
+            "%(lette)s righe lette, %(ordini)s ordini: %(importati)s "
+            "importati, %(gia)s gia' presenti, %(errori)s in errore."
+        ) % {"lette": esito.get("lette", 0), "ordini": esito.get("ordini", 0),
+             "importati": esito.get("importati", 0),
+             "gia": esito.get("gia_importati", 0),
+             "errori": esito.get("in_errore", 0)}
+        if esito.get("in_errore", 0):
+            # ⚠️ Un ordine in errore e' merce venduta che in Odoo non c'e'.
+            messaggio += _(" ⚠️ Il motivo di ognuno e' scritto sulla sua riga "
+                           "in «Ordini importati».")
+        if esito.get("interrotto", 0):
+            messaggio += _(" ⚠️ L'elenco si e' interrotto: i numeri NON sono "
+                           "completi, e ripetere lo scarico e' la cosa giusta.")
+        guasto = bool(esito.get("in_errore", 0) or esito.get("interrotto", 0))
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "title": _("Ordini Kaufland"),
+                "message": messaggio,
+                "type": "warning" if guasto else "success",
+                "sticky": guasto,
+            },
+        }
+
     def action_kaufland_riaggancia(self):
         """Legge le offerte già vive su Kaufland e popola la mappa.
 
@@ -224,16 +323,21 @@ class CentrivoChannel(models.Model):
             # mandare a cercarlo nel registro. Resta gialla e appiccicata —
             # una finestra che si chiude da sola su questo passaggio è
             # esattamente il modo di non farlo.
-            messaggio += " ⚠️ Prima misura: la guardia RESTA CHIUSA " \
-                         "apposta, e non c'è niente da riparare. Controlla " \
-                         "che %s sia il numero di offerte che vedi sul " \
-                         "portale Kaufland per questo mercato, conferma " \
-                         "«Offerte attese su Kaufland» sul canale e ripeti " \
-                         "il riaggancio." % esito.get("lette", 0)
+            messaggio += " ⚠️ Prima misura sul mercato %s: la guardia " \
+                         "RESTA CHIUSA apposta, e non c'è niente da " \
+                         "riparare. Controlla sul portale Kaufland che il " \
+                         "numero di offerte di QUEL mercato torni, conferma " \
+                         "«Offerte attese» sulla sua riga e ripeti il " \
+                         "riaggancio." % (
+                             esito.get("mercati_da_finire") or "interessato")
         else:
-            messaggio += " ⚠️ La guardia RESTA CHIUSA: la creazione delle " \
-                         "offerte non partirà. Vedi il registro delle " \
-                         "operazioni."
+            # ⚠️ Si nomina il mercato: con piu' mercati, «la guardia resta
+            # chiusa» senza dire QUALE fa cercare nel posto sbagliato — e
+            # l'altro mercato intanto e' aperto e funzionante.
+            messaggio += " ⚠️ La guardia RESTA CHIUSA sul mercato %s: su " \
+                         "quello la creazione delle offerte non partirà. " \
+                         "Vedi il registro delle operazioni." % (
+                             esito.get("mercati_da_finire") or "interessato")
         return {
             "type": "ir.actions.client",
             "tag": "display_notification",
@@ -282,6 +386,10 @@ class CentrivoChannel(models.Model):
         # «errore» — e chi guarda il video decide di creare. Chi aggiunge un
         # modo di essere parziali lo aggiunge in un posto solo.
         parziale = not esito.get("completo", 0)
+        coda_mercati = ""
+        if esito.get("mercati_da_finire"):
+            coda_mercati = " ⚠️ Da finire sul mercato %s." % esito[
+                "mercati_da_finire"]
         if not esito.get("guardati", 0):
             messaggio = "Nessun prodotto guardato: controlla le etichette " \
                         "prodotto del canale e che i prodotti abbiano il " \
@@ -317,6 +425,7 @@ class CentrivoChannel(models.Model):
             if parziale:
                 messaggio += " ⚠️ Il quadro è INCOMPLETO: vedi il registro " \
                              "delle operazioni."
+        messaggio += coda_mercati
         return {
             "type": "ir.actions.client",
             "tag": "display_notification",
@@ -412,6 +521,7 @@ class CentrivoChannel(models.Model):
         """
         riunito = {}
         guasti = []
+        incompleti = []
         for mercato, esito in (esiti_per_mercato or {}).items():
             if not isinstance(esito, dict) or "errore" in esito:
                 # ⚠️ Un mercato che ha sollevato NON puo' far passare il giro
@@ -423,6 +533,14 @@ class CentrivoChannel(models.Model):
                     esito.get("errore") if isinstance(esito, dict) else esito))
                 continue
             for chiave, valore in esito.items():
+                if chiave == "completo" and not valore:
+                    # ⚠️ Non basta sapere CHE il giro non e' completo: con piu'
+                    # mercati bisogna sapere QUALE. Il 2026-08-31 il messaggio
+                    # diceva «la guardia RESTA CHIUSA» mentre l'Italia era
+                    # aperta e solo la Germania no — e manda a cercare nel
+                    # posto sbagliato. Il registro lo distingueva, la notifica
+                    # a video no.
+                    incompleti.append(mercato)
                 if isinstance(valore, bool):
                     # ⚠️ I «si/no» si uniscono con la E, non si rinominano per
                     # mercato: `completo` dev'essere vero solo se lo e' per
@@ -442,6 +560,8 @@ class CentrivoChannel(models.Model):
         # quando nessun mercato le ha prodotte (tutti in errore): altrimenti
         # il KeyError seppellisce l'errore vero sotto una traccia di stack.
         riunito.setdefault("completo", False)
+        if incompleti:
+            riunito["mercati_da_finire"] = ", ".join(sorted(incompleti))
         return riunito
 
     def _kaufland_guasto(self, titolo, esito):

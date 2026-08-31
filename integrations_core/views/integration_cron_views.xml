@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Le automazioni DEL PACCHETTO, in una schermata sola.
+
+        ⚠️ Nascono tutte spente, ed è voluto: nessun automatismo parte da solo
+        su un marketplace vero. Ma accenderle da Impostazioni → Tecnico → Azioni
+        pianificate vuol dire entrare nel menu dove stanno anche quelle di Odoo
+        — fatture, magazzino, posta — e spegnerne una per sbaglio è un guaio che
+        nessuno collegherebbe a noi. Qui si vedono solo le nostre.
+    -->
+    <record id="view_centrivo_cron_list" model="ir.ui.view">
+        <field name="name">ir.cron.list.centrivo</field>
+        <field name="model">ir.cron</field>
+        <field name="arch" type="xml">
+            <!-- ⚠️ `editable` di proposito: il senso di questa schermata è
+                 poter accendere e spegnere SENZA aprire la scheda. Senza,
+                 tanto valeva mandare l'utente nel menu tecnico. -->
+            <list string="Automazioni Centrivo" editable="bottom"
+                  create="false" delete="false"
+                  decoration-muted="not active">
+                <field name="name" readonly="1"/>
+                <field name="active" widget="boolean_toggle"/>
+                <field name="interval_number"/>
+                <field name="interval_type"/>
+                <!-- La prossima esecuzione è il solo modo di sapere se una
+                     cosa accesa stia davvero per partire. -->
+                <field name="nextcall"/>
+                <field name="lastcall" readonly="1"/>
+                <field name="model_id" readonly="1" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_centrivo_cron_search" model="ir.ui.view">
+        <field name="name">ir.cron.search.centrivo</field>
+        <field name="model">ir.cron</field>
+        <field name="arch" type="xml">
+            <search string="Automazioni Centrivo">
+                <field name="name"/>
+                <!-- ⚠️ Nessun filtro e' predefinito: la schermata deve aprirsi
+                     mostrando TUTTO, accese e spente. Un filtro di partenza
+                     rifarebbe lo stesso danno che questa vista esiste per
+                     riparare — nascondere proprio quelle che si vogliono
+                     accendere. -->
+                <filter name="accese" string="Accese"
+                        domain="[('active', '=', True)]"/>
+                <filter name="spente" string="Spente"
+                        domain="[('active', '=', False)]"/>
+                <group expand="0" string="Raggruppa per">
+                    <filter name="per_stato" string="Stato"
+                            context="{'group_by': 'active'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!--
+        L'elenco si ricava dai MODULI, non dai modelli: due automazioni del
+        pacchetto girano su modelli di Odoo (stock.picking, account.move) e un
+        filtro sul modello le perderebbe — proprio le due che nessuno andrebbe
+        a cercare. Per questo l'azione è calcolata, non un dominio fisso.
+    -->
+    <record id="action_centrivo_automazioni" model="ir.actions.server">
+        <field name="name">Automazioni</field>
+        <field name="model_id" ref="base.model_ir_cron"/>
+        <field name="state">code</field>
+        <field name="code">action = env["centrivo.channel"].action_centrivo_automazioni()</field>
+    </record>
+
+    <menuitem id="menu_centrivo_automazioni"
+              name="Automazioni"
+              parent="menu_integration_config"
+              action="action_centrivo_automazioni"
+              groups="base.group_system"
+              sequence="30"/>
+</odoo>

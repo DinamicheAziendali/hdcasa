@@ -60,6 +60,17 @@ class CentrivoKauflandMarket(models.Model):
         help="⚠️ Kaufland rifiuta le offerte che non ne hanno uno, ed e' per "
              "mercato: quello di Kaufland.de non vale per Kaufland.it.")
 
+    # ⚠️ LA POSIZIONE FISCALE STA QUI, non sul canale, e non e' pignoleria:
+    # l'IVA e' per Paese — 19% in Germania, 22% in Italia, 20% in Francia. Un
+    # campo solo sul canale sarebbe gia' sbagliato al secondo mercato, e un
+    # ordine tedesco nascerebbe con l'IVA italiana senza che nessun errore lo
+    # dica. Decisione di Angelo del 2026-08-31, con questa precisazione.
+    fiscal_position_id = fields.Many2one(
+        "account.fiscal.position", string="Posizione fiscale",
+        help="Applicata agli ordini che arrivano da QUESTO mercato. Senza, "
+             "l'ordine nasce con le imposte predefinite dell'azienda — che "
+             "per un mercato estero sono quasi sempre quelle sbagliate.")
+
     warehouse_id = fields.Char(
         string="Magazzino Kaufland",
         help="Facoltativo. Vuoto significa il magazzino predefinito.")

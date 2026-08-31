@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Il cassetto di questo marketplace, sotto «Integrations → Marketplace».
+
+    ⚠️ Va caricato PRIMA delle viste che ci si appendono: dentro un modulo i
+    file dati si leggono nell'ordine del manifesto, e un menu che cita un
+    padre non ancora definito fa fallire l'installazione.
+-->
+<odoo>
+    <menuitem id="menu_kaufland_root"
+              name="Kaufland"
+              parent="integrations_core.menu_integrations_marketplace"
+              sequence="10"/>
+</odoo>

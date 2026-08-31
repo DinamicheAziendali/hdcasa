@@ -26,10 +26,18 @@
     saltuario — si caricano quando arriva un file nuovo, non tutti i giorni.
 -->
 <odoo>
+    <!-- Il cassetto di Cdiscount, sotto «Integrations → Marketplace».
+         ⚠️ Definito PRIMA delle voci che ci si appendono: dentro un file i
+         record si leggono in ordine. -->
+    <menuitem id="menu_cdiscount_root"
+              name="Cdiscount"
+              parent="integrations_core.menu_integrations_marketplace"
+              sequence="40"/>
+
   <!-- LA PAGINA. Risponde a «cosa e' fermo e perche'». -->
   <menuitem id="menu_cdiscount_scheda"
-            name="Schede Cdiscount"
-            parent="integrations_core.menu_integrations_root"
+            name="Schede"
+            parent="menu_cdiscount_root"
             action="action_cdiscount_scheda"
             sequence="51"/>
 
@@ -43,8 +51,8 @@
        scoprire le schede senza verdetto: senza questa voce, nessuno lo
        apriva mai. -->
   <menuitem id="menu_cdiscount_pacchetto"
-            name="Pacchetti Cdiscount"
-            parent="integrations_core.menu_integrations_root"
+            name="Pacchetti"
+            parent="menu_cdiscount_root"
             action="action_cdiscount_pacchetto"
             sequence="52"/>
 
@@ -54,8 +62,8 @@
        nessuna scheda parte, quindi senza questa voce il modulo non aveva
        nemmeno un primo passo. -->
   <menuitem id="menu_cdiscount_contenuti"
-            name="Contenuti Cdiscount"
-            parent="integrations_core.menu_integrations_root"
+            name="Contenuti"
+            parent="menu_cdiscount_root"
             action="action_cdiscount_contenuti_wizard"
             sequence="53"/>
 </odoo>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Il pulsante che porta alle righe Kaufland dell'ordine.
+
+        ⚠️ Sostituisce la voce di menu «Righe d'ordine», tolta il 2026-08-31:
+        era una riga in piu' nella barra per un'informazione che ha senso solo
+        DENTRO un ordine. Qui si vede solo sugli ordini che ne hanno.
+    -->
+    <record id="view_integration_order_map_form_kaufland" model="ir.ui.view">
+        <field name="name">centrivo.order.map.form.kaufland</field>
+        <field name="model">centrivo.order.map</field>
+        <field name="inherit_id"
+               ref="integrations_core.view_integration_order_map_form"/>
+        <field name="arch" type="xml">
+            <!-- ⚠️ DENTRO il foglio, non prima: fuori dal <sheet> il riquadro
+                 dei pulsanti finisce sopra la scheda, staccato, e non e' dove
+                 un utente Odoo lo cerca. Il tronco non ha un button_box, quindi
+                 lo crea questa vista. -->
+            <xpath expr="//sheet/group[1]" position="before">
+                <div class="oe_button_box" name="button_box_kaufland">
+                    <button name="action_kaufland_vedi_righe" type="object"
+                            class="oe_stat_button" icon="fa-list-ul"
+                            invisible="kaufland_unit_count == 0">
+                        <field name="kaufland_unit_count" widget="statinfo"
+                               string="Righe Kaufland"/>
+                    </button>
+                </div>
+            </xpath>
+        </field>
+    </record>
+</odoo>

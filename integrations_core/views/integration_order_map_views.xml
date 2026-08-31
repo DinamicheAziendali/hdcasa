@@ -29,10 +29,10 @@
         <field name="arch" type="xml">
             <form string="Ordine importato">
                 <header>
-                    <!-- Trigger MANUALE Strato 3b: abilitato solo se l'ordine è
+                    <!-- Trigger MANUALE: abilitato solo se l'ordine è
                          importato e la spedizione non è ancora stata comunicata. -->
                     <button name="action_push_shipment" type="object"
-                            string="Push spedizione a BricoBravo"
+                            string="Comunica la spedizione"
                             class="btn-primary"
                             invisible="state != 'imported' or shipment_pushed"/>
                 </header>

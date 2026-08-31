@@ -31,9 +31,18 @@
         <field name="code">action = model.open_config()</field>
     </record>
 
+    <!-- ⚠️ «Configurazione» diventa una TENDINA, non piu' una voce sola.
+         La barra era stata accorciata apposta il 2026-08-31: appendere
+         «Automazioni» accanto avrebbe rimesso una riga, e sono due cose dello
+         stesso mestiere (roba da amministratore, non da tutti i giorni). -->
     <menuitem id="menu_integration_config"
               name="Configurazione"
               parent="menu_integrations_root"
+              sequence="90"/>
+
+    <menuitem id="menu_integration_config_impostazioni"
+              name="Impostazioni"
+              parent="menu_integration_config"
               action="action_integration_config"
-              sequence="50"/>
+              sequence="10"/>
 </odoo>

@@ -12,7 +12,7 @@
 #   - Strato 3: schede prodotto (categorie/attributi/immagini/moderazione).
 {
     "name": "Marketplace - ManoMano",
-    "version": "18.0.1.15.0",
+    "version": "18.0.1.16.0",
     "license": "OPL-1",
     "category": "Connector",
     "summary": "Connettore ManoMano (Partners API): export offerte prezzo/giacenza "
@@ -22,6 +22,7 @@
     "depends": ["integrations_core", "account"],
     "data": [
         "security/ir.model.access.csv",
+        "views/manomano_menu_root.xml",
         "views/manomano_feed_field_views.xml",
         "views/manomano_channel_views.xml",
         "views/manomano_offer_views.xml",

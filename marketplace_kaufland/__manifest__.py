@@ -6,7 +6,7 @@
 # allineamento. Gli ordini sono la Consegna 2.
 {
     "name": "Marketplace - Kaufland",
-    "version": "18.0.2.0.0",
+    "version": "18.0.6.0.0",
     "license": "OPL-1",
     "category": "Connector",
     "summary": "Connettore Kaufland: riaggancio delle offerte esistenti, "
@@ -16,9 +16,11 @@
     "depends": ["integrations_core", "account"],
     "data": [
         "security/ir.model.access.csv",
+        "views/kaufland_menu_root.xml",
         "data/ir_cron.xml",
         "views/kaufland_offer_views.xml",
         "views/kaufland_channel_views.xml",
+        "views/kaufland_order_map_views.xml",
     ],
     "installable": True,
     "application": False,

@@ -17,39 +17,62 @@
               action="action_integration_order_map"
               sequence="20"/>
 
+    <!-- ⚠️ Accanto a «Ordini importati» per scelta di Angelo (2026-08-31):
+         e' li' che si guarda quando un ordine va in errore per un codice non
+         agganciato, e in quel momento cercarlo in un cassetto e' tempo perso. -->
     <menuitem id="menu_integration_sku_map"
               name="Mapping SKU"
               parent="menu_integrations_root"
               action="action_integration_sku_map"
-              sequence="30"/>
+              sequence="25"/>
 
-    <menuitem id="menu_carrier_brand"
-              name="Corrieri"
-              parent="menu_integrations_root"
-              action="action_carrier_brand"
-              sequence="32"/>
-
-    <menuitem id="menu_carrier_source"
-              name="Vettori"
-              parent="menu_integrations_root"
-              action="action_carrier_source"
-              sequence="33"/>
-
-    <menuitem id="menu_carrier_override"
-              name="Eccezioni corrieri"
-              parent="menu_integrations_root"
-              action="action_carrier_override"
-              sequence="34"/>
-
-    <menuitem id="menu_carrier_coverage"
-              name="Copertura corrieri"
-              parent="menu_integrations_root"
-              action="action_carrier_coverage"
-              sequence="36"/>
-
+    <!-- ⚠️ In CIMA, non in Configurazione: e' il posto dove si va quando
+         qualcosa non torna, e in quel momento non si ha voglia di cercarlo.
+         Scelta di Angelo. -->
     <menuitem id="menu_integration_job_log"
               name="Log operazioni"
               parent="menu_integrations_root"
               action="action_integration_job_log"
+              sequence="30"/>
+
+    <!-- ============================================================
+         I CASSETTI. La barra era arrivata a 17 voci e cresceva di 2-3
+         a ogni marketplace nuovo: con cinque canali sarebbero venti.
+         Da qui in giu' si raggruppa, e un canale nuovo non allunga piu'
+         la barra — si appende sotto «Marketplace».
+         ============================================================ -->
+    <menuitem id="menu_integrations_marketplace"
+              name="Marketplace"
+              parent="menu_integrations_root"
               sequence="40"/>
+
+    <menuitem id="menu_integrations_carriers"
+              name="Corrieri e vettori"
+              parent="menu_integrations_root"
+              sequence="50"/>
+
+    <menuitem id="menu_carrier_brand"
+              name="Corrieri"
+              parent="menu_integrations_carriers"
+              action="action_carrier_brand"
+              sequence="10"/>
+
+    <menuitem id="menu_carrier_source"
+              name="Vettori"
+              parent="menu_integrations_carriers"
+              action="action_carrier_source"
+              sequence="20"/>
+
+    <menuitem id="menu_carrier_override"
+              name="Eccezioni corrieri"
+              parent="menu_integrations_carriers"
+              action="action_carrier_override"
+              sequence="30"/>
+
+    <menuitem id="menu_carrier_coverage"
+              name="Copertura corrieri"
+              parent="menu_integrations_carriers"
+              action="action_carrier_coverage"
+              sequence="40"/>
+
 </odoo>

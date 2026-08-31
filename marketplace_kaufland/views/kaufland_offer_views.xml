@@ -70,8 +70,43 @@
   </record>
 
   <menuitem id="menu_kaufland_offer"
-            name="Offerte Kaufland"
-            parent="integrations_core.menu_integrations_root"
+            name="Offerte"
+            parent="menu_kaufland_root"
             action="action_kaufland_offer"
-            sequence="47"/>
+            sequence="10"/>
+
+    <record id="view_kaufland_order_unit_list" model="ir.ui.view">
+        <field name="name">centrivo.kaufland.order.unit.list</field>
+        <field name="model">centrivo.kaufland.order.unit</field>
+        <field name="arch" type="xml">
+            <list string="Righe d'ordine Kaufland" create="false" delete="false">
+                <field name="id_order"/>
+                <field name="id_offer"/>
+                <field name="market_id"/>
+                <field name="order_map_id"/>
+                <field name="stato_kaufland"/>
+                <field name="prezzo" sum="Totale"/>
+                <field name="ricavo_netto" sum="Ricavo netto"/>
+                <!-- ⚠️ La colonna che costa: oltre questa data la spedizione
+                     è in ritardo, e le metriche di puntualità di Kaufland sono
+                     per ACCOUNT, non per offerta. -->
+                <field name="scade_il"/>
+                <field name="spedizione_comunicata"/>
+                <field name="company_id" column_invisible="True"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_kaufland_order_unit" model="ir.actions.act_window">
+        <field name="name">Righe d'ordine</field>
+        <field name="res_model">centrivo.kaufland.order.unit</field>
+        <field name="view_mode">list</field>
+    </record>
+
+    <!-- ⚠️ Niente voce di menu per le righe d'ordine: si raggiungono dal
+         PULSANTE dentro l'ordine importato (vedi
+         kaufland_order_map_views.xml). Scelta di Angelo il 2026-08-31 —
+         un'informazione che ha senso solo dentro un ordine non merita una riga
+         nella barra, ed e' proprio la barra che stavamo accorciando.
+         L'azione resta: e' quella che il pulsante apre. -->
 </odoo>

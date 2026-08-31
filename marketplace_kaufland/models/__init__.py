@@ -4,3 +4,5 @@
 from . import kaufland_channel
 from . import kaufland_market
 from . import kaufland_offer
+from . import kaufland_order_map
+from . import kaufland_order_unit

@@ -188,3 +188,27 @@ class TestMercati(TransactionCase):
             "etichetta prodotto", parametri.get("message") or "",
             "E il messaggio dev'essere QUELLO del connettore: e' l'unico che "
             "dice cosa fare.")
+
+    def test_05_il_messaggio_dice_QUALE_mercato_e_rimasto_indietro(self):
+        """⚠️ Il difetto di comunicazione del 2026-08-31.
+
+        Con l'Italia aperta e la Germania alla prima misura, la notifica
+        diceva «la guardia RESTA CHIUSA» — al singolare, senza nominare
+        nessuno. Il registro distingueva i due mercati, il messaggio a video
+        no: e chi legge va a cercare il guasto sul mercato sbagliato, mentre
+        l'altro e' aperto e funzionante.
+        """
+        riunito = self.canale._kaufland_riunisci({
+            "it": {"completo": True, "lette": 166, "agganciate": 166},
+            "de": {"completo": False, "prima_misura": True, "lette": 166,
+                   "agganciate": 166},
+        })
+        self.assertFalse(
+            riunito["completo"],
+            "Un mercato non completo rende non completo il giro.")
+        self.assertEqual(
+            riunito.get("mercati_da_finire"), "de",
+            "E il giro deve dire QUALE mercato e' rimasto indietro.")
+        self.assertEqual(
+            riunito["lette"], 332,
+            "I contatori invece si sommano: 166 + 166.")

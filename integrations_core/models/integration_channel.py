@@ -11,7 +11,7 @@ nessun valore reale vive nel codice.
 import logging
 import secrets
 
-from odoo import api, fields, models
+from odoo import _, api, fields, models
 
 from ..connectors.base import MarketplaceConnector
 
@@ -356,6 +356,57 @@ class IntegrationChannel(models.Model):
             connector.pull_orders()
             channel.last_pull = fields.Datetime.now()
         return True
+
+    @api.model
+    def action_centrivo_automazioni(self):
+        """Le azioni pianificate DEL PACCHETTO, in una schermata sola.
+
+        ⚠️ Perche' esiste. Le automazioni di questo pacchetto **nascono tutte
+        spente**, ed e' voluto: nessun automatismo parte da solo su un
+        marketplace vero. Ma accenderle una per una da Impostazioni → Tecnico →
+        Azioni pianificate vuol dire entrare nel menu dove stanno anche le
+        automazioni di Odoo — fatture, magazzino, posta — e spegnere per errore
+        una di quelle e' un guaio che nessuno collega a noi.
+
+        Qui si vedono **solo le nostre**, con l'interruttore e la prossima
+        esecuzione. Riservata agli amministratori.
+
+        ⚠️ L'elenco si ricava dai MODULI (`ir.model.data`), non dai modelli:
+        due automazioni del pacchetto girano su modelli di Odoo
+        (`stock.picking` e `account.move`), e un filtro sul modello le
+        perderebbe per strada — proprio le due che nessuno andrebbe a cercare.
+        """
+        dati = self.env["ir.model.data"].sudo().search([("model", "=", "ir.cron")])
+        nostri = dati.filtered(
+            lambda d: d.module == "integrations_core"
+            or d.module.startswith(("marketplace_", "centrivo_")))
+        return {
+            "type": "ir.actions.act_window",
+            "name": _("Automazioni Centrivo"),
+            "res_model": "ir.cron",
+            "view_mode": "list,form",
+            "views": [(self.env.ref(
+                "integrations_core.view_centrivo_cron_list").id, "list"),
+                (False, "form")],
+            "search_view_id": self.env.ref(
+                "integrations_core.view_centrivo_cron_search").id,
+            "domain": [("id", "in", nostri.mapped("res_id"))],
+            # ⚠️ `active_test: False`, e senza questo la schermata NON SERVE A
+            # NIENTE. `ir.cron` ha il campo `active`, e Odoo nasconde da solo
+            # i record disattivati in qualunque elenco: le automazioni del
+            # pacchetto nascono TUTTE SPENTE, quindi si vedevano solo le poche
+            # gia' accese — cioe' l'esatto contrario dello scopo, che e'
+            # accendere quelle spente.
+            #
+            # ⚠️ E il difetto si presentava bene: nessun errore, elenco non
+            # vuoto, numeri plausibili. L'ha fermato Angelo aprendo la
+            # schermata e contando: «vedo solo 5 azioni».
+            "context": {"create": False, "delete": False,
+                        "active_test": False},
+            "help": _("<p class='o_view_nocontent_smiling_face'>"
+                      "Nessuna automazione del pacchetto risulta installata."
+                      "</p>"),
+        }
 
     def _picking_carrier_source(self, picking):
         """Vettore del trasferimento come (modello, id, nome per esteso).
