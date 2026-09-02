@@ -26,6 +26,15 @@ _logger = logging.getLogger(__name__)
 @register_connector("temu", "Temu")
 class TemuConnector(TemuCatalogMixin, TemuOrdersMixin, TemuShippingMixin,
                     TemuPricingMixin, TemuInvoiceMixin, MarketplaceConnector):
+
+    # ⚠️ Cosa Temu NON usa della scheda del canale: le credenziali sono le sue
+    # (chiave, segreto, gettone) nel suo tab, e non fa feed CSV.
+    usa_api_key = False
+    usa_ambienti = False
+    usa_feed_csv = False
+    usa_immagini_feed = False
+    usa_mappa_catalogo = False
+    usa_presa_in_carico = False   # non esiste, su questo marketplace
     """Connettore Temu: un solo endpoint per tutta l'area UE, Italia inclusa."""
 
     default_base_url = TEMU_URL_EU

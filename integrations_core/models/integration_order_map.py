@@ -9,7 +9,9 @@ creato. Serve a due cose fondamentali:
   - NON perdere: se l'import va in errore, resta traccia (stato error + messaggio)
     e si può ritentare.
 """
-from odoo import fields, models
+from odoo import _, api, fields, models
+
+from ..connectors.base import MarketplaceConnector
 
 
 class IntegrationOrderMap(models.Model):
@@ -54,6 +56,35 @@ class IntegrationOrderMap(models.Model):
         help="True quando l'ordine importato è stato marcato 'acquisito' sul "
              "marketplace. Se False con stato 'Importato', l'acquired è pendente "
              "e verrà ritentato.")
+
+    # ⚠️ COME SI LEGGE la presa in carico, ed esiste perche' il booleano qui
+    # sopra da solo MENTE. «Acquisito su marketplace» vuoto significa «la
+    # chiamata e' fallita, si ritenta» — ed e' vero su BricoBravo e ManoMano,
+    # che una presa in carico ce l'hanno. Su Kaufland quella chiamata NON
+    # ESISTE: la casella resta vuota per sempre, la lista la dipinge arancione,
+    # e chi guarda cerca un guasto che non c'e'.
+    #
+    # ⚠️ E in una lista MISTA una colonna non si puo' nascondere riga per riga:
+    # sono tutte lo stesso campo. Per questo non si nasconde il booleano ma si
+    # mostra un campo che sa dire anche «non prevista» — che e' la sola cosa
+    # che rende leggibile la schermata degli ordini importati.
+    presa_in_carico = fields.Selection(
+        selection=[("non_prevista", "Non prevista"),
+                   ("da_fare", "Da fare"),
+                   ("fatta", "Fatta")],
+        string="Presa in carico", compute="_compute_presa_in_carico",
+        help="«Non prevista» non è un problema: quel marketplace non ha un "
+             "passo di presa in carico, e si va dritti alla spedizione.")
+
+    @api.depends("channel_id.connector_code", "acquired_done")
+    def _compute_presa_in_carico(self):
+        for mappa in self:
+            if not MarketplaceConnector.usa_per(
+                    mappa.channel_id.connector_code, "usa_presa_in_carico"):
+                mappa.presa_in_carico = "non_prevista"
+            else:
+                mappa.presa_in_carico = (
+                    "fatta" if mappa.acquired_done else "da_fare")
 
     # Strato 3b (push_shipment): True SOLO quando la spedizione (corriere +
     # tracking) è stata comunicata con successo al marketplace (BricoBravo:

@@ -46,6 +46,10 @@
                 <field name="storefront"/>
                 <field name="shipping_group_id"/>
                 <field name="fiscal_position_id"/>
+                <!-- ⚠️ Il listino sta QUI, come la posizione fiscale, e per la
+                     stessa ragione: il prezzo e' per Paese come l'IVA. Vuoto
+                     = si usa quello del canale. -->
+                <field name="pricelist_id" optional="show"/>
                 <field name="warehouse_id" optional="hide"/>
                 <!-- PRIMA il numero, POI il riaggancio: finche' la soglia
                      vale 0 il cancello NON si apre, e il primo giro si

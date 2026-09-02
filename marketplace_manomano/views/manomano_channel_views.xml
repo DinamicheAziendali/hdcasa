@@ -103,33 +103,20 @@
                 </page>
             </notebook>
 
-            <!-- Base URL è automatico in base all'Ambiente (sandbox/produzione):
-                 sui canali ManoMano il campo è nascosto per evitare confusione. -->
-            <xpath expr="//field[@name='base_url']" position="attributes">
-                <attribute name="invisible">connector_code == 'manomano'</attribute>
-            </xpath>
+            <!-- ⚠️ QUI c'erano cinque `invisible="connector_code == 'manomano'"`
+                 su nodi della vista del tronco: indirizzo base, tab «Mapping
+                 catalogo», bottoni del feed, gruppo «Feed», URL dei feed.
+                 Funzionavano, ma erano una bomba a orologeria: due moduli che
+                 riscrivono lo STESSO attributo sullo STESSO nodo si
+                 sovrascrivono a vicenda — vince chi si carica per ultimo, e
+                 l'altro smette di nascondere senza che nessun errore lo dica.
+                 Kaufland stava per aggiungere i suoi sugli stessi nodi.
 
-            <!-- ManoMano usa l'API, non i feed CSV: nasconde l'intero tab
-                 "Mapping catalogo" (BricoBravo-only) sui canali ManoMano. -->
-            <page name="catalog" position="attributes">
-                <attribute name="invisible">connector_code == 'manomano'</attribute>
-            </page>
-
-            <!-- Nel tab Export: i due pulsanti feed (stock CSV) sono BricoBravo-only. -->
-            <xpath expr="//page[@name='export']//button[@name='action_generate_stock_feed']/.."
-                   position="attributes">
-                <attribute name="invisible">connector_code == 'manomano'</attribute>
-            </xpath>
-
-            <!-- Gruppo "Feed" (export_token/stock_feed_generated_at): BricoBravo-only. -->
-            <xpath expr="//field[@name='export_token']/.." position="attributes">
-                <attribute name="invisible">connector_code == 'manomano'</attribute>
-            </xpath>
-
-            <!-- Gruppo URL dei feed (da incollare su BricoBravo): BricoBravo-only. -->
-            <xpath expr="//field[@name='stock_feed_url']/.." position="attributes">
-                <attribute name="invisible">connector_code == 'manomano'</attribute>
-            </xpath>
+                 Adesso il connettore DICHIARA cosa non usa (`usa_feed_csv`,
+                 `usa_mappa_catalogo`, `usa_indirizzo_base` in
+                 `connectors/manomano.py`) e il tronco nasconde di
+                 conseguenza. Stesso risultato a video, e nessuno pesta i
+                 piedi a nessuno. -->
         </field>
     </record>
 </odoo>

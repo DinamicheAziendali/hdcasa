@@ -6,7 +6,7 @@
 # gli ordini la Consegna 3.
 {
     "name": "Marketplace - Cdiscount",
-    "version": "18.0.1.1.0",
+    "version": "18.0.1.1.2",
     "license": "OPL-1",
     "category": "Connector",
     "summary": "Connettore Cdiscount (Octopia): invio delle schede prodotto "

@@ -61,6 +61,56 @@ class MarketplaceConnector(object):
     # concreto la dichiara (es. BricoBravo i suoi 16 codici). Il modello di
     # mapping corrieri (centrivo.carrier.map) interroga questa lista per
     # popolare il Selection dinamico, SENZA hardcodare nulla nel modello.
+    # ------------------------------------------------------------------
+    # COSA USA QUESTO CONNETTORE — e perche' la schermata gliela chiede
+    # ------------------------------------------------------------------
+    # ⚠️ La scheda del canale e' cresciuta attorno a BricoBravo, che lavora a
+    # feed CSV. Su un canale Kaufland mostrava la chiave API di BricoBravo, la
+    # mappatura delle colonne del feed, il bottone «Genera feed» che non fa
+    # niente, e persino un riquadro intitolato «URL DEI FEED — DA INCOLLARE SU
+    # BRICOBRAVO». Visto da Angelo il 2026-08-31.
+    #
+    # ⚠️ **Il default e' True, ed e' voluto.** Un connettore che si dimentica
+    # di dichiarare tiene la schermata di sempre: si perde un po' di pulizia,
+    # non un campo che serviva. Il verso opposto — nascondere per difetto —
+    # farebbe sparire in silenzio la configurazione di un canale che gira.
+    #
+    # ⚠️ E stanno QUI, non in un `invisible` per nome di marketplace dentro le
+    # viste: ManoMano lo faceva a modo suo, e due moduli che riscrivono lo
+    # stesso attributo sullo stesso nodo si sovrascrivono a vicenda — vince
+    # chi si carica per ultimo, e l'altro smette di nascondere senza che
+    # nessun errore lo dica.
+    usa_api_key = True            # il campo «API Key» generico del canale
+    usa_ambienti = True           # la scelta sandbox/produzione
+    usa_indirizzo_base = True     # il campo «Base URL API»
+    usa_feed_csv = True           # bottoni, token e URL dei feed CSV
+    usa_immagini_feed = True      # la risoluzione delle immagini del feed
+    usa_mappa_catalogo = True     # il tab «Mapping catalogo»
+    # ⚠️ La PRESA IN CARICO: dire al marketplace «questo ordine l'ho preso».
+    # BricoBravo la vuole (`acquired`), ManoMano pure (accetta ordini).
+    # Kaufland NON CE L'HA: l'ordine nasce `open`, dopo quindici minuti passa a
+    # «da spedire», e il gesto dopo e' direttamente la spedizione.
+    #
+    # ⚠️ Perche' e' un problema di lettura e non un dettaglio: la colonna
+    # «Acquisito su marketplace» significa «spunta assente + stato Importato =
+    # la presa in carico e' FALLITA e verra' ritentata», e la lista la dipinge
+    # arancione per dirlo. Su un ordine Kaufland quella frase e' falsa, e
+    # l'arancione pure. Angelo se l'e' chiesto dopo mezz'ora dal primo ordine.
+    usa_presa_in_carico = True
+
+    @classmethod
+    def usa_per(cls, code, nome):
+        """Se il connettore con quel codice dichiara di usare quella cosa.
+
+        Un codice sconosciuto (canale senza connettore valido, modulo
+        disinstallato) risponde True: si mostra tutto, che e' il verso
+        sicuro.
+        """
+        klass = CONNECTOR_REGISTRY.get(code)
+        if klass is None:
+            return True
+        return bool(getattr(klass, nome, True))
+
     carrier_codes = []
     # Traduzione "corriere dell'anagrafica -> codice atteso dal marketplace".
     # Chiave = centrivo.carrier.brand.code (brt, gls, poste, ...), valore = un

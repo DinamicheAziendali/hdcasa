@@ -211,6 +211,22 @@ GRUPPI_RIFIUTATI_DI_FILA = 2
 @register_connector("kaufland", "Kaufland")
 class KauflandConnector(MarketplaceConnector):
 
+    # ⚠️ Cosa Kaufland NON usa della scheda del canale. Le sue credenziali
+    # stanno nel suo tab, non nella «API Key» generica di BricoBravo; i feed
+    # CSV non li fa (parla via API); la mappatura del catalogo non la legge.
+    #
+    # ⚠️ E soprattutto NON HA UN AMBIENTE DI PROVA. Il campo diceva
+    # «Sandbox (test)» su un canale il cui indirizzo era
+    # `sellerapi.kaufland.com` — cioe' il Kaufland VERO. Una schermata che
+    # dice «sei in prova» mentre scrivi su un marketplace vero e' peggio di
+    # una schermata muta.
+    usa_api_key = False
+    usa_ambienti = False
+    usa_feed_csv = False
+    usa_immagini_feed = False
+    usa_mappa_catalogo = False
+    usa_presa_in_carico = False   # non esiste, su questo marketplace
+
     default_base_url = KAUFLAND_URL
 
     # I corrieri ammessi da Kaufland (vedi KAUFLAND_CARRIERS). Serve al
@@ -317,6 +333,34 @@ class KauflandConnector(MarketplaceConnector):
     def _mercato(self):
         """Il codice del mercato corrente, come lo vuole Kaufland."""
         return self._riga_mercato().storefront
+
+    def _listino_del_mercato(self):
+        """Il listino dei prezzi per il mercato corrente.
+
+        ⚠️ **Il listino del MERCATO vince**, e quello del canale e' il ripiego.
+        Il prezzo e' per Paese come l'IVA: un box doccia non costa lo stesso in
+        Germania e in Italia. Un listino solo sul canale sbaglia gia' al
+        secondo mercato, e sbaglia in SILENZIO — le offerte partono, nessun
+        errore compare, e il prezzo e' quello di un altro Paese.
+
+        Il ripiego sul canale esiste perche' chi ha un mercato solo non deve
+        compilare niente di nuovo per il fatto che abbiamo aggiunto un campo.
+        """
+        mercato = self._riga_mercato()
+        listino = mercato.sudo().pricelist_id or self.channel.sudo().pricelist_selling_id
+        if not listino:
+            # ⚠️ Il messaggio nomina IL MERCATO, non solo il canale: ora che il
+            # listino puo' stare in due posti, «manca sul canale» manderebbe a
+            # cercare nel posto sbagliato.
+            raise UserError(_(
+                "Manca il listino dei prezzi per il mercato «%(mercato)s» del "
+                "canale «%(canale)s»: senza, nessun prodotto avrebbe un prezzo "
+                "e non si manderebbe nessuna offerta. Compila il listino sulla "
+                "riga del mercato, oppure il «Listino prezzo pieno» del canale "
+                "se vale per tutti i mercati.")
+                % {"mercato": mercato.storefront or "?",
+                   "canale": self.channel.display_name})
+        return listino
 
     def _giorni_lavorazione(self, prodotto):
         """I giorni che si dichiarano a Kaufland per QUESTO prodotto.
@@ -2341,16 +2385,11 @@ class KauflandConnector(MarketplaceConnector):
 
         client = self._client()
         Offerta = self.env["kaufland.offer"].sudo()
-        listino = canale.pricelist_selling_id
-        # ⚠️ Guardia 3 — senza listino di vendita ogni prodotto risulterebbe
-        # «senza prezzo»: N righe marcate «saltato» con un messaggio che
-        # incolpa i prodotti invece del canale. E' configurazione mancante,
-        # e si dice prima di sporcare qualcosa.
-        if not listino:
-            raise UserError(_(
-                "Sul canale «%s» manca il listino di vendita: senza, nessun "
-                "prodotto avrebbe un prezzo e non si creerebbe nessuna "
-                "offerta.") % self.channel.display_name)
+        # ⚠️ Guardia 3 — senza listino ogni prodotto risulterebbe «senza
+        # prezzo»: N righe marcate «saltato» con un messaggio che incolpa i
+        # prodotti invece della configurazione. E' configurazione mancante, e
+        # si dice prima di sporcare qualcosa. Il listino e' PER MERCATO.
+        listino = self._listino_del_mercato()
 
         dominio = self._candidate()
         # ⚠️ Nessun `limit` sulla ricerca: il tetto conta le chiamate, e
@@ -3065,15 +3104,11 @@ class KauflandConnector(MarketplaceConnector):
         canale = self.channel.sudo()
         client = self._client()
         Offerta = self.env["kaufland.offer"].sudo()
-        listino = canale.pricelist_selling_id
         # ⚠️ Senza listino ogni riga risulterebbe «senza prezzo» e si
         # manderebbero solo le giacenze, in silenzio. È configurazione
         # mancante, e si dice PRIMA di chiamare Kaufland — qui si può ancora
-        # sollevare, perché non è partita nessuna richiesta.
-        if not listino:
-            raise UserError(_(
-                "Sul canale «%s» manca il listino di vendita: senza, nessun "
-                "prezzo si potrebbe allineare.") % self.channel.display_name)
+        # sollevare, perché non è partita nessuna richiesta. PER MERCATO.
+        listino = self._listino_del_mercato()
 
         # ⚠️ Le righe con un `id_unit`, e basta: le altre non esistono su
         # Kaufland e non c'è niente da aggiornare.

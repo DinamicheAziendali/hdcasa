@@ -230,6 +230,19 @@ MANOMANO_FEED_MANDATORY = {"sku", "brand", "title", "description", "image_1"}
 
 @register_connector("manomano", "ManoMano")
 class ManoManoConnector(MarketplaceConnector):
+
+    # ⚠️ Cosa ManoMano NON usa della scheda del canale. Prima erano cinque
+    # `invisible="connector_code == 'manomano'"` dentro la vista di questo
+    # modulo: funzionavano, ma due moduli che riscrivono lo stesso attributo
+    # sullo stesso nodo si sovrascrivono a vicenda — vince chi si carica per
+    # ultimo, e l'altro smette di nascondere senza che nessun errore lo dica.
+    # Dichiarato qui, il tronco chiede e nessuno pesta i piedi a nessuno.
+    #
+    # ⚠️ `usa_immagini_feed` resta True: ManoMano i feed prodotto li fa, e la
+    # risoluzione delle immagini e' proprio la cosa che gli serve di piu'.
+    usa_indirizzo_base = False    # l'indirizzo lo sceglie l'ambiente
+    usa_feed_csv = False          # i feed CSV sono di BricoBravo
+    usa_mappa_catalogo = False    # idem la mappatura delle colonne
     """Connettore concreto ManoMano (Famiglia A) — export offerte (crea/aggiorna)."""
 
     # NESSUN URL di default precompilato per l'onchange del canale: se presente,

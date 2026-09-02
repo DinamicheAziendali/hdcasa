@@ -24,7 +24,7 @@
 # sulla scheda del canale dice in ogni momento quali chiamate sono scoperte.
 {
     "name": "Marketplace - Temu",
-    "version": "18.0.7.1.0",
+    "version": "18.0.7.1.2",
     "license": "OPL-1",
     "category": "Connector",
     "summary": "Connettore Temu (Open API EU): aggancio delle schede esistenti, "

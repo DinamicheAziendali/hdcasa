@@ -422,6 +422,16 @@ def _chiavi_di_paginazione(risposta):
 @register_connector("cdiscount", "Cdiscount (Octopia)")
 class CdiscountConnector(MarketplaceConnector):
 
+    # ⚠️ Cosa Cdiscount NON usa della scheda del canale: le credenziali sono
+    # OAuth2 (identificativo e segreto cliente) nel suo tab, e le schede si
+    # mandano a pacchetti via API, non a feed CSV.
+    usa_api_key = False
+    usa_ambienti = False
+    usa_feed_csv = False
+    usa_immagini_feed = False
+    usa_mappa_catalogo = False
+    usa_presa_in_carico = False   # non esiste, su questo marketplace
+
     default_base_url = CDISCOUNT_URL
 
     # ------------------------------------------------------------------

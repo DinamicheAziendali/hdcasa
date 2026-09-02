@@ -35,8 +35,11 @@ CHIAVI_BUONE = ("create", "aggiornate", "invariate", "mandate")
 # mercato in `de` per provare — le righe restano «pronte» riferite all'Italia,
 # il cancello e' alzato, e «Crea le offerte mancanti» metterebbe in vendita su
 # Kaufland.de offerte mai riconosciute la'.
-CAMPI_DEL_CANCELLO = ("kaufland_storefront", "kaufland_client_key",
-                      "kaufland_secret_key", "base_url")
+# ⚠️ `kaufland_storefront` NON e' piu' in questa lista, e non e' una svista:
+# il mercato e' passato sulle righe di `kaufland_market_ids` il 2026-08-29, e
+# il suo cambio lo sorveglia il `write()` di `centrivo.kaufland.market`. Qui
+# restano i tre che sono davvero DEL CANALE.
+CAMPI_DEL_CANCELLO = ("kaufland_client_key", "kaufland_secret_key", "base_url")
 
 
 class CentrivoChannel(models.Model):
@@ -139,8 +142,10 @@ class CentrivoChannel(models.Model):
         `base.group_user`: qui ci passa gente che non è amministratrice.
         """
         campi = [c for c in CAMPI_DEL_CANCELLO if c in valori]
+        # ⚠️ Una lista, non un insieme di record: iterare un One2many da'
+        # comunque i singoli record, e cosi' il metodo resta provabile anche
+        # dai banchi di `tools/`, che di Odoo hanno solo il minimo.
         da_richiudere = []
-        da_azzerare = []
         if campi:
             for canale in self.sudo():
                 if canale.connector_code != "kaufland":
@@ -149,49 +154,35 @@ class CentrivoChannel(models.Model):
                             if str(canale[c] or "") != str(valori[c] or "")]
                 if not cambiati:
                     continue
-                # ⚠️ IL MERCATO CHE CAMBIA PORTA VIA ANCHE LA SOGLIA, e solo
-                # lui. «Offerte attese su Kaufland» è un numero DI UN
-                # MERCATO: le 166 dell'Italia appiccicate a un canale ormai
-                # tedesco facevano dire al riaggancio «ne sono attese 166» di
-                # un mercato che non le ha mai avute. Il verso era sicuro (il
-                # cancello restava chiuso) ma il testo mentiva. Azzerata, la
-                # soglia torna a «prima misura»: si misura, si conferma, si
-                # riparte — che su un mercato nuovo è esattamente giusto.
+                # ⚠️ SI RICHIUDONO I MERCATI, non il canale. Il cancello e'
+                # passato sulle righe il 2026-08-29, e questo metodo aveva
+                # continuato a leggere i campi vecchi: restava innocuo finche'
+                # nessuno toccava le credenziali, e il giorno che Angelo le ha
+                # incollate e' esploso con «'centrivo.channel' object has no
+                # attribute 'kaufland_riagganciato'». Trovato in produzione il
+                # 2026-08-31.
                 #
-                # ⚠️ Le CREDENZIALI e l'indirizzo NO, ed è il verso stretto:
-                # il mercato è lo stesso, e una chiave nuova con un permesso
-                # più stretto che restituisce meno offerte è precisamente ciò
-                # che la soglia esiste per fermare. Azzerarla la
-                # disarmerebbe proprio nel caso che conta.
-                if ("kaufland_storefront" in cambiati
-                        and canale.kaufland_offerte_attese):
-                    da_azzerare.append(canale.id)
-                if (canale.kaufland_riagganciato
-                        or canale.kaufland_riagganciato_il):
-                    da_richiudere.append(canale.id)
+                # ⚠️ TUTTI i mercati del canale, spenti compresi: le
+                # credenziali sono dell'account, quindi il quadro che ogni
+                # mercato dichiara di conoscere e' stato letto con quelle. Un
+                # mercato spento che si riaccende domani col cancello ancora
+                # alzato sarebbe la stessa bugia, solo differita.
+                da_richiudere += [
+                    m for m in canale.kaufland_market_ids
+                    if m.riagganciato or m.riagganciato_il]
         esito = super().write(valori)
-        # ⚠️ DOPO la scrittura vera, e in `write` che NON toccano i campi del
-        # cancello: nessuna ricorsione.
+        # ⚠️ DOPO la scrittura vera: nessuna ricorsione, perche' si scrive su
+        # un altro modello.
         if da_richiudere:
-            richiusi = self.sudo().browse(da_richiudere)
-            richiusi.write({"kaufland_riagganciato": False,
-                            "kaufland_riagganciato_il": False})
-            for canale in richiusi:
+            for mercato in da_richiudere:
+                mercato.write({"riagganciato": False,
+                               "riagganciato_il": False})
                 _logger.warning(
-                    "Kaufland: sul canale %s è cambiato %s, la guardia del "
-                    "riaggancio è stata RICHIUSA. Va rifatto «Riaggancia le "
-                    "offerte esistenti» prima di creare.",
-                    canale.display_name, ", ".join(campi))
-        if da_azzerare:
-            azzerati = self.sudo().browse(da_azzerare)
-            azzerati.write({"kaufland_offerte_attese": 0})
-            for canale in azzerati:
-                _logger.warning(
-                    "Kaufland: sul canale %s è cambiato il mercato, e "
-                    "«Offerte attese su Kaufland» è stato azzerato: quel "
-                    "numero parlava dell'altro mercato. Il prossimo "
-                    "riaggancio lo rimisura e chiede di confermarlo.",
-                    canale.display_name)
+                    "Kaufland: sul canale %s sono cambiate le credenziali o "
+                    "l'indirizzo, e la guardia del riaggancio del mercato %s "
+                    "e' stata RICHIUSA. Va rifatto «Riaggancia le offerte "
+                    "esistenti» prima di creare.",
+                    mercato.channel_id.display_name, mercato.storefront)
         return esito
 
     # ------------------------------------------------------------------

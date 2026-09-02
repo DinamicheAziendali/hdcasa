@@ -357,6 +357,35 @@ class IntegrationChannel(models.Model):
             channel.last_pull = fields.Datetime.now()
         return True
 
+    # ------------------------------------------------------------------
+    # COSA MOSTRARE su questo canale — lo decide il suo connettore
+    # ------------------------------------------------------------------
+    # ⚠️ Non memorizzati e senza `@api.depends` su nient'altro che il codice
+    # connettore: servono solo alla schermata, e un campo memorizzato
+    # significherebbe una colonna in piu' su una tabella di produzione per
+    # decidere se disegnare un riquadro.
+    usa_api_key = fields.Boolean(compute="_compute_cosa_usa")
+    usa_ambienti = fields.Boolean(compute="_compute_cosa_usa")
+    usa_indirizzo_base = fields.Boolean(compute="_compute_cosa_usa")
+    usa_feed_csv = fields.Boolean(compute="_compute_cosa_usa")
+    usa_immagini_feed = fields.Boolean(compute="_compute_cosa_usa")
+    usa_mappa_catalogo = fields.Boolean(compute="_compute_cosa_usa")
+
+    @api.depends("connector_code")
+    def _compute_cosa_usa(self):
+        """Chiede al connettore cosa usa, e la scheda si adatta.
+
+        ⚠️ Nessun nome di marketplace qui dentro: il tronco chiede, i moduli
+        rispondono. Un connettore nuovo dichiara le sue e la schermata lo
+        segue senza che questo file cambi.
+        """
+        for canale in self:
+            for nome in ("usa_api_key", "usa_ambienti", "usa_indirizzo_base",
+                         "usa_feed_csv", "usa_immagini_feed",
+                         "usa_mappa_catalogo"):
+                canale[nome] = MarketplaceConnector.usa_per(
+                    canale.connector_code, nome)
+
     @api.model
     def action_centrivo_automazioni(self):
         """Le azioni pianificate DEL PACCHETTO, in una schermata sola.

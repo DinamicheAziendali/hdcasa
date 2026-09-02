@@ -19,8 +19,12 @@ porterebbe dietro gli altri, ed e' la protezione che vale piu' di tutte.
 
 Piano: docs/superpowers/plans/2026-08-29-kaufland-multi-mercato.md
 """
+import logging
+
 from odoo import _, api, fields, models
 from odoo.exceptions import UserError
+
+_logger = logging.getLogger(__name__)
 
 MERCATI = [("at", "Austria"), ("de", "Germania"), ("es", "Spagna"),
            ("fr", "Francia"), ("it", "Italia"), ("nl", "Paesi Bassi")]
@@ -71,6 +75,28 @@ class CentrivoKauflandMarket(models.Model):
              "l'ordine nasce con le imposte predefinite dell'azienda — che "
              "per un mercato estero sono quasi sempre quelle sbagliate.")
 
+    # ⚠️ IL LISTINO STA QUI, per la stessa ragione della posizione fiscale
+    # qui sopra: il PREZZO e' per Paese come l'IVA. Un box doccia non costa lo
+    # stesso in Germania e in Italia — concorrenza diversa, commissione
+    # diversa, spedizione diversa.
+    #
+    # ⚠️ E un campo solo sul canale sbaglia IN SILENZIO: le offerte partono,
+    # nessun errore compare, e il prezzo e' quello di un altro Paese. Visto da
+    # Angelo il 2026-08-31 guardando la configurazione: «come faccio a
+    # impostare un listino pieno unico se vendo in varie nazioni?».
+    #
+    # Vuoto = si usa quello del canale, cosi' chi ha un mercato solo non deve
+    # compilare niente di nuovo.
+    pricelist_id = fields.Many2one(
+        "product.pricelist", string="Listino di questo mercato",
+        help="Il listino usato per i prezzi delle offerte di QUESTO mercato. "
+             "Vuoto: si usa il «Listino prezzo pieno» del canale.\n\n"
+             "⚠️ Il prezzo che si manda a Kaufland NON porta con se' la "
+             "valuta: Kaufland la ricava dal mercato. Un listino in una valuta "
+             "diversa da quella che il mercato si aspetta manderebbe il numero "
+             "giusto con il significato sbagliato, senza che nessun errore lo "
+             "dica.")
+
     warehouse_id = fields.Char(
         string="Magazzino Kaufland",
         help="Facoltativo. Vuoto significa il magazzino predefinito.")
@@ -103,6 +129,46 @@ class CentrivoKauflandMarket(models.Model):
     company_id = fields.Many2one(
         "res.company", string="Azienda", related="channel_id.company_id",
         store=True, index=True)
+
+    def write(self, valori):
+        """Cambiare il MERCATO di una riga ne richiude il cancello.
+
+        ⚠️ Stesso ragionamento del `write()` sul canale, un piano piu' sotto.
+        «Riagganciato» su questa riga non dice «ho letto le offerte vive»:
+        dice «ho letto le offerte vive **di questo mercato**». Spostare la riga
+        da `it` a `fr` lascerebbe la frase scritta riferita a un altro Paese,
+        col cancello alzato — e «Crea le offerte mancanti» metterebbe in
+        vendita in Francia offerte mai riconosciute la'.
+
+        ⚠️ E la SOGLIA se ne va con lui: «offerte attese» e' un numero DI UN
+        MERCATO. Le 166 dell'Italia appiccicate a una riga ormai francese
+        farebbero dire al riaggancio «ne sono attese 166» di un mercato che non
+        le ha mai avute. Il verso resterebbe sicuro (il cancello e' chiuso), ma
+        il testo mentirebbe. Azzerata, la soglia torna a «prima misura» — che
+        su un mercato nuovo e' esattamente giusto.
+
+        ⚠️ Il gruppo di spedizione e il magazzino NO: si correggono senza
+        rimettere in discussione cosa esiste su Kaufland. Non tutto e'
+        identita'.
+        """
+        if "storefront" not in valori:
+            return super().write(valori)
+        cambiate = self.sudo().filtered(
+            lambda m: (m.storefront or "") != (valori["storefront"] or ""))
+        esito = super().write(valori)
+        if cambiate:
+            # ⚠️ DOPO la scrittura vera, e senza `storefront` nei valori:
+            # nessuna ricorsione.
+            cambiate.sudo().write({"riagganciato": False,
+                                   "riagganciato_il": False,
+                                   "offerte_attese": 0})
+            for mercato in cambiate:
+                _logger.warning(
+                    "Kaufland: la riga del canale %s e' passata al mercato "
+                    "%s: guardia RICHIUSA e soglia azzerata. Va rifatto "
+                    "«Riaggancia le offerte esistenti».",
+                    mercato.channel_id.display_name, mercato.storefront)
+        return esito
 
     _sql_constraints = [
         # ⚠️ Un mercato una volta sola per canale: due righe «it» sullo stesso

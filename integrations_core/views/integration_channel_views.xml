@@ -31,13 +31,29 @@
                          La configurazione operativa sta nel tab "Impostazioni". -->
                     <group>
                         <group string="Identità">
+                            <!-- ⚠️ Invisibili: sono gli interruttori che il
+                                 connettore dichiara, e servono solo alle
+                                 condizioni qui sotto. -->
+                            <field name="usa_api_key" invisible="1"/>
+                            <field name="usa_ambienti" invisible="1"/>
+                            <field name="usa_indirizzo_base" invisible="1"/>
+                            <field name="usa_feed_csv" invisible="1"/>
+                            <field name="usa_immagini_feed" invisible="1"/>
+                            <field name="usa_mappa_catalogo" invisible="1"/>
                             <field name="name"/>
                             <field name="connector_code"/>
-                            <field name="environment"/>
+                            <!-- ⚠️ Non tutti i marketplace hanno un
+                                 ambiente di prova. Kaufland non ce l'ha: il
+                                 campo diceva «Sandbox (test)» su un canale
+                                 che parlava col Kaufland VERO. -->
+                            <field name="environment" invisible="not usa_ambienti"/>
                             <field name="active"/>
                             <field name="company_id" groups="base.group_multi_company"/>
                         </group>
-                        <group string="Credenziali">
+                        <group string="Credenziali" invisible="not usa_api_key">
+                            <!-- La chiave generica la usano BricoBravo e
+                                 ManoMano. Gli altri hanno le loro, nel tab
+                                 del marketplace. -->
                             <field name="api_key" password="True"/>
                         </group>
                     </group>
@@ -45,7 +61,8 @@
                         <!-- Tab Impostazioni: opzioni operative del connettore. -->
                         <page string="Impostazioni" name="settings">
                             <group>
-                                <group string="Connessione">
+                                <group string="Connessione"
+                                       invisible="not usa_indirizzo_base">
                                     <field name="base_url"/>
                                 </group>
                                 <group string="Import ordini">
@@ -57,7 +74,7 @@
                         </page>
                         <!-- Tab Export: feed prezzi/giacenze via URL pubblico. -->
                         <page string="Export" name="export">
-                            <div class="mb-3">
+                            <div class="mb-3" invisible="not usa_feed_csv">
                                 <button name="action_generate_stock_feed" type="object"
                                         string="Genera feed prezzi/giacenze ora"
                                         class="btn-primary"/>
@@ -69,12 +86,14 @@
                             <group>
                                 <group string="Listini">
                                     <field name="pricelist_selling_id"/>
-                                    <field name="pricelist_discounted_id"/>
+                                    <field name="pricelist_discounted_id"
+                                           invisible="not usa_feed_csv"/>
                                 </group>
                                 <group string="Selezione prodotti">
                                     <field name="export_product_tag_ids"
                                            widget="many2many_tags"/>
-                                    <field name="processing_time_default"/>
+                                    <field name="processing_time_default"
+                                           invisible="not usa_feed_csv"/>
                                 </group>
                             </group>
                             <group>
@@ -86,7 +105,7 @@
                                            invisible="stock_scope != 'warehouses'"
                                            required="stock_scope == 'warehouses'"/>
                                 </group>
-                                <group string="Feed">
+                                <group string="Feed" invisible="not usa_feed_csv">
                                     <field name="export_token" readonly="1"/>
                                     <field name="stock_feed_generated_at" readonly="1"/>
                                 </group>
@@ -95,17 +114,19 @@
                                      (è roba del feed CSV di BricoBravo) e la
                                      risoluzione finirebbe invisibile proprio
                                      sul canale che ne ha più bisogno. -->
-                                <group string="Immagini">
+                                <group string="Immagini"
+                                       invisible="not usa_immagini_feed">
                                     <field name="feed_image_resolution"/>
                                 </group>
                             </group>
-                            <group string="URL dei feed (da incollare su BricoBravo)">
+                            <group string="URL dei feed (da incollare su BricoBravo)"
+                                   invisible="not usa_feed_csv">
                                 <field name="stock_feed_url" readonly="1"
                                        widget="CopyClipboardChar"/>
                                 <field name="catalog_feed_url" readonly="1"
                                        widget="CopyClipboardChar"/>
                             </group>
-                            <p class="text-muted">
+                            <p class="text-muted" invisible="not usa_feed_csv">
                                 Incolla questi URL nel pannello BricoBravo (uno per
                                 feed). Gli URL contengono il token: se rigeneri il
                                 token vanno re-incollati. Gli URL delle immagini del
@@ -114,7 +135,8 @@
                             </p>
                         </page>
                         <!-- Tab Mapping catalogo: feed catalogo completo (23 colonne). -->
-                        <page string="Mapping catalogo" name="catalog">
+                        <page string="Mapping catalogo" name="catalog"
+                              invisible="not usa_mappa_catalogo">
                             <div class="mb-3">
                                 <button name="action_generate_catalog_feed" type="object"
                                         string="Genera feed catalogo ora"

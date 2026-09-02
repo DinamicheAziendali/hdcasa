@@ -13,9 +13,16 @@
                        decoration-success="state == 'imported'"
                        decoration-danger="state == 'error'"
                        decoration-muted="state == 'pending'"/>
-                <field name="acquired_done"
-                       decoration-success="acquired_done == True"
-                       decoration-warning="state == 'imported' and acquired_done == False"/>
+                <!-- ⚠️ Il campo che sa dire «non prevista», non il booleano
+                     nudo: in una lista MISTA la colonna e' la stessa per tutti
+                     i marketplace, e «Acquisito su marketplace» vuoto su un
+                     ordine Kaufland — dipinto pure arancione — significava «la
+                     presa in carico e' fallita», che su Kaufland e' falso:
+                     quella chiamata non esiste proprio. -->
+                <field name="presa_in_carico"
+                       decoration-success="presa_in_carico == 'fatta'"
+                       decoration-warning="state == 'imported' and presa_in_carico == 'da_fare'"
+                       decoration-muted="presa_in_carico == 'non_prevista'"/>
                 <field name="shipment_pushed"
                        decoration-success="shipment_pushed == True"/>
                 <field name="company_id" groups="base.group_multi_company"/>
@@ -45,7 +52,7 @@
                         </group>
                         <group>
                             <field name="sale_order_id"/>
-                            <field name="acquired_done"/>
+                            <field name="presa_in_carico"/>
                             <field name="shipment_pushed"/>
                             <field name="company_id" groups="base.group_multi_company"/>
                         </group>

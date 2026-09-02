@@ -6,7 +6,7 @@
 # allineamento. Gli ordini sono la Consegna 2.
 {
     "name": "Marketplace - Kaufland",
-    "version": "18.0.6.0.0",
+    "version": "18.0.7.2.0",
     "license": "OPL-1",
     "category": "Connector",
     "summary": "Connettore Kaufland: riaggancio delle offerte esistenti, "
