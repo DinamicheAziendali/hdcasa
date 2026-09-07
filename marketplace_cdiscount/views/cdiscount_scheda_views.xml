@@ -29,6 +29,7 @@
              domanda vera non e' «quante sono rosse» ma «perche'». -->
         <field name="motivo"/>
         <field name="pacchetto_id"/>
+        <field name="operazione"/>
         <field name="controllato_il"/>
         <!-- ⚠️ Nascosta ma a portata di un clic sulle colonne: davanti a una
              scheda rifiutata per il titolo, la prima domanda e' se il file
@@ -53,6 +54,7 @@
             <group string="Cosa ne e' stato">
               <field name="stato"/>
               <field name="pacchetto_id"/>
+              <field name="operazione"/>
               <field name="controllato_il"/>
             </group>
           </group>

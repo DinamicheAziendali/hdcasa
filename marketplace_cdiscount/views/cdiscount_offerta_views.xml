@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Copyright 2026 Angelo Margarella (www.hdcasa.it)
+    License OPL-1 (Odoo Proprietary License v1.0). See LICENSE file for full terms.
+
+    Le OFFERTE Cdiscount (Consegna 2): una riga per scheda riuscita, con la
+    memoria di cio' che e' stato mandato. Stessa forma della pagina delle
+    schede: il motivo accanto allo stato, un filtro per ogni stato.
+-->
+<odoo>
+  <record id="view_cdiscount_offerta_list" model="ir.ui.view">
+    <field name="name">cdiscount.offerta.list</field>
+    <field name="model">cdiscount.offerta</field>
+    <field name="arch" type="xml">
+      <list string="Offerte Cdiscount">
+        <field name="channel_id"/>
+        <field name="codice"/>
+        <field name="product_id"/>
+        <field name="stato"
+               decoration-warning="stato == 'sconosciuto'"
+               decoration-danger="stato == 'rifiutato'"
+               decoration-success="stato == 'riuscito'"
+               decoration-muted="stato == 'ritirata'"/>
+        <field name="ultimo_prezzo"/>
+        <field name="ultima_quantita"/>
+        <field name="ultima_ecotax"/>
+        <field name="pacchetto_id"/>
+        <field name="mandata_il"/>
+        <field name="motivo"/>
+        <field name="controllato_il" optional="hide"/>
+        <field name="scheda_id" optional="hide"/>
+      </list>
+    </field>
+  </record>
+
+  <record id="view_cdiscount_offerta_form" model="ir.ui.view">
+    <field name="name">cdiscount.offerta.form</field>
+    <field name="model">cdiscount.offerta</field>
+    <field name="arch" type="xml">
+      <form string="Offerta Cdiscount">
+        <sheet>
+          <group>
+            <group string="Chi e'">
+              <field name="channel_id"/>
+              <field name="codice"/>
+              <field name="product_id"/>
+              <field name="scheda_id"/>
+            </group>
+            <group string="Cosa e' stato mandato">
+              <field name="stato"/>
+              <field name="pacchetto_id"/>
+              <field name="ultimo_prezzo"/>
+              <field name="ultima_quantita"/>
+              <field name="ultima_ecotax"/>
+              <field name="ritiro"/>
+              <field name="mandata_il"/>
+              <field name="controllato_il"/>
+            </group>
+          </group>
+          <group string="Motivo">
+            <field name="motivo" nolabel="1"/>
+          </group>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+  <record id="view_cdiscount_offerta_search" model="ir.ui.view">
+    <field name="name">cdiscount.offerta.search</field>
+    <field name="model">cdiscount.offerta</field>
+    <field name="arch" type="xml">
+      <search>
+        <field name="codice"/>
+        <field name="product_id"/>
+        <field name="channel_id"/>
+        <field name="pacchetto_id"/>
+        <filter name="da_mandare" string="Da mandare"
+                domain="[('stato', '=', 'da_mandare')]"/>
+        <filter name="in_attesa" string="In attesa dell'esito"
+                domain="[('stato', '=', 'in_attesa')]"/>
+        <filter name="vive" string="Vive"
+                domain="[('stato', '=', 'riuscito')]"/>
+        <filter name="rifiutate" string="Rifiutate"
+                domain="[('stato', '=', 'rifiutato')]"/>
+        <filter name="ritirate" string="Ritirate"
+                domain="[('stato', '=', 'ritirata')]"/>
+        <filter name="sconosciute" string="Senza verdetto"
+                domain="[('stato', '=', 'sconosciuto')]"/>
+        <separator/>
+        <filter name="mai_mandate" string="Mai mandate"
+                domain="[('mandata_il', '=', False)]"/>
+        <filter name="ritiri" string="Ritiri in corso"
+                domain="[('ritiro', '=', True), ('stato', '=', 'in_attesa')]"/>
+        <group expand="0" string="Raggruppa">
+          <filter name="per_canale" string="Canale"
+                  context="{'group_by': 'channel_id'}"/>
+          <filter name="per_stato" string="Stato"
+                  context="{'group_by': 'stato'}"/>
+        </group>
+      </search>
+    </field>
+  </record>
+
+  <record id="action_cdiscount_offerta" model="ir.actions.act_window">
+    <field name="name">Offerte Cdiscount</field>
+    <field name="res_model">cdiscount.offerta</field>
+    <field name="view_mode">list,form</field>
+    <field name="search_view_id" ref="view_cdiscount_offerta_search"/>
+    <field name="help" type="html">
+      <p class="o_view_nocontent_smiling_face">Nessuna offerta ancora</p>
+      <p>Le offerte nascono da sole al primo «Allinea le offerte» sul
+         canale, una per ogni scheda riuscita. Prima servono l'éco-participation
+         sui prodotti e il costo di spedizione sul canale.</p>
+    </field>
+  </record>
+</odoo>

@@ -3,4 +3,8 @@ access_cdiscount_pacchetto_user,cdiscount.pacchetto user,model_cdiscount_pacchet
 access_cdiscount_pacchetto_manager,cdiscount.pacchetto manager,model_cdiscount_pacchetto,base.group_system,1,1,1,1
 access_cdiscount_scheda_user,cdiscount.scheda user,model_cdiscount_scheda,base.group_user,1,0,0,0
 access_cdiscount_scheda_manager,cdiscount.scheda manager,model_cdiscount_scheda,base.group_system,1,1,1,1
+access_cdiscount_offerta_user,cdiscount.offerta user,model_cdiscount_offerta,base.group_user,1,0,0,0
+access_cdiscount_offerta_manager,cdiscount.offerta manager,model_cdiscount_offerta,base.group_system,1,1,1,1
+access_cdiscount_riga_ordine_user,cdiscount.riga.ordine user,model_cdiscount_riga_ordine,base.group_user,1,0,0,0
+access_cdiscount_riga_ordine_manager,cdiscount.riga.ordine manager,model_cdiscount_riga_ordine,base.group_system,1,1,1,1
 access_cdiscount_contenuti_wizard_manager,cdiscount.contenuti.wizard manager,model_cdiscount_contenuti_wizard,base.group_system,1,1,1,1

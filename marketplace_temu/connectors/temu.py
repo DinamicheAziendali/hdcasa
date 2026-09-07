@@ -15,7 +15,6 @@ from odoo.addons.integrations_core.connectors.transport import RestTransport
 
 from .temu_catalog import TemuCatalogMixin
 from .temu_orders import TemuOrdersMixin
-from .temu_invoice import TemuInvoiceMixin
 from .temu_pricing import TemuPricingMixin
 from .temu_shipping import TemuShippingMixin
 from .temu_client import TemuClient, TEMU_URL_EU
@@ -25,7 +24,7 @@ _logger = logging.getLogger(__name__)
 
 @register_connector("temu", "Temu")
 class TemuConnector(TemuCatalogMixin, TemuOrdersMixin, TemuShippingMixin,
-                    TemuPricingMixin, TemuInvoiceMixin, MarketplaceConnector):
+                    TemuPricingMixin, MarketplaceConnector):
 
     # ⚠️ Cosa Temu NON usa della scheda del canale: le credenziali sono le sue
     # (chiave, segreto, gettone) nel suo tab, e non fa feed CSV.

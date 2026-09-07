@@ -2,11 +2,12 @@
 # Copyright 2026 Angelo Margarella (www.hdcasa.it)
 # License OPL-1 (Odoo Proprietary License v1.0). See LICENSE file for full terms.
 # Connettore Cdiscount/Octopia (Famiglia A — sotto integrations_core).
-# CONSEGNA 1: fondamenta e SCHEDE PRODOTTO. Le offerte sono la Consegna 2,
-# gli ordini la Consegna 3.
+# CONSEGNA 1: fondamenta e SCHEDE PRODOTTO. CONSEGNA 2 (2026-09-02): le
+# OFFERTE — prezzo, giacenza, éco-participation. CONSEGNA 3 (2026-09-02):
+# gli ORDINI — scarico degli InPreparation e spedizione a un collo.
 {
     "name": "Marketplace - Cdiscount",
-    "version": "18.0.1.1.2",
+    "version": "18.0.5.0.0",
     "license": "OPL-1",
     "category": "Connector",
     "summary": "Connettore Cdiscount (Octopia): invio delle schede prodotto "
@@ -57,6 +58,9 @@
         "data/ir_cron.xml",
         "views/cdiscount_pacchetto_views.xml",
         "views/cdiscount_scheda_views.xml",
+        "views/cdiscount_offerta_views.xml",
+        "views/cdiscount_riga_ordine_views.xml",
+        "views/product_template_views.xml",
         "views/cdiscount_contenuti_wizard_views.xml",
         "views/cdiscount_channel_views.xml",
         "views/cdiscount_menus.xml",

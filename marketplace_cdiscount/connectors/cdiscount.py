@@ -56,7 +56,9 @@ from .cdiscount_client import (
 )
 from .cdiscount_rapporto import (
     CHIAVI_CODICE,
+    IDENTICA,
     IN_LAVORAZIONE,
+    MODIFICA,
     PRONTO,
     RIFIUTATO,
     RIUSCITO,
@@ -64,6 +66,40 @@ from .cdiscount_rapporto import (
     _e_scalare,
     leggi_rapporto,
     riconcilia,
+)
+from .cdiscount_ordini import (
+    CORRIERI,
+    MARCHI_CORRIERI,
+    MAX_PAGINE_ORDINI,
+    ORDINI_PER_PAGINA,
+    PERCORSO_CONTEGGIO_IN_ATTESA,
+    corpo_spedizione,
+    etichetta_corriere,
+    leggi_ordine,
+    percorso_ordini,
+    spedizione_righe,
+    totale_righe,
+    url_tracciamento,
+)
+from .cdiscount_offerte import (
+    MAX_PER_LOTTO,
+    RIFIUTATO_IN_BLOCCO,
+    SOGLIA_KG,
+    corpo_offerta,
+    cursore_da_link,
+    leggi_esiti_offerte,
+    lotti,
+    modo_consegna,
+    motivo_pacchetto,
+    numero_pacchetto_offerte,
+    regge_oltre_30kg,
+    stato_pacchetto,
+)
+from .cdiscount_prodotti import (
+    LetturaInterrotta,
+    leggi_prodotto,
+    pagine_prodotti,
+    secchi_tornano,
 )
 from .cdiscount_schede import (
     MAX_PER_PACCHETTO,
@@ -82,6 +118,7 @@ from .cdiscount_token import scadenza, serve_rinnovo
 # ragione per `CON_CONTENUTI`: e' IL dominio che dice quali schede sono
 # componibili, e lo usano in tre (la procedura del file, questo invio, la
 # pagina del Compito 12).
+from ..models.cdiscount_offerta import DA_MANDARE, RITIRATA
 from ..models.cdiscount_scheda import (
     CON_CONTENUTI,
     IN_ATTESA,
@@ -96,6 +133,7 @@ from ..models.cdiscount_pacchetto import (
     ORE_AVVISO,
     RACCOLTO,
     SCADUTO,
+    TIPO_OFFERTE,
     TIPO_SCHEDE,
 )
 
@@ -106,15 +144,39 @@ _logger = logging.getLogger(__name__)
 # davvero la' fuori quando un esito e' ignoto.
 API_SCHEDE = "/products-integration"
 API_SCHEDE_NOSTRE = "/products"
-# ⚠️ Il rapporto di UN pacchetto, e il numero va nel PERCORSO, non in una
-# stringa di ricerca. Anche questo nome viene dalla documentazione (vedi
-# l'avvertenza in testa al file), ma la forma non e' indifferente: se il nome
-# di un parametro di ricerca fosse sbagliato, un server indulgente potrebbe
-# rispondere con l'elenco di TUTTI i rapporti o con l'ultimo — cioe' col
-# rapporto di un ALTRO pacchetto, letto come se fosse il nostro. Un percorso
-# sbagliato risponde 404, che qui si legge «non lo so»: nessun verdetto,
-# nessuna scrittura, e il pacchetto resta aperto.
+# ⚠️ MISURATO il 2026-09-02: `GET /categories/{codice}` risponde un oggetto
+# nudo con `label`, `level` (1, 2 o 3), `parentReference`. E' cio' che
+# permette di verificare il LIVELLO della categoria prima di spedire — il
+# controllo che la prima versione dichiarava impossibile.
+API_CATEGORIE = "/categories"
+LIVELLO_CATEGORIA = 3
+# CONSEGNA 2 — le offerte. Il ciclo a quattro chiamate (LETTO) e i modi di
+# consegna (MISURATO). Vedi docs/cdiscount-offerte-consegna-2.md.
+API_OFFER_PACKAGES = "/offer-packages"
+API_MODI_CONSEGNA = "/sellers/delivery-modes"
+# Un giro manda al massimo dieci lotti: e' il tetto del tempo del worker,
+# non di Cdiscount (che ne prende 50.000 per pacchetto).
+MAX_OFFERTE_PER_GIRO = MAX_PER_LOTTO * 10
+MAX_PAGINE_ESITI_OFFERTE = 500
+OPERAZIONE_ALLINEA = "cdiscount_allinea_offerte"
+# ⚠️ Il rapporto di UN pacchetto. **MISURATO il 2026-09-02** sull'account
+# vero (`docs/cdiscount-misurato-2026-09-02.md`): il numero va in QUERY,
+# `?packageId=<numero>`, e il rapporto e' PAGINATO con `pageIndex`/`pageSize`.
+# La prima versione lo metteva nel percorso (`/<numero>`), che sul vero
+# risponde il 404 generico del gateway — e ogni esito sarebbe rimasto
+# «sconosciuto» fino a scadere.
+#
+# ⚠️ Il timore della prima versione — «un parametro sbagliato potrebbe far
+# rispondere i rapporti di TUTTI i pacchetti» — era FONDATO: senza
+# `packageId` l'endpoint risponde 200 con l'elenco di tutti. Il parametro si
+# manda sempre, `riconcilia` lavora sull'insieme dei codici mandati, e le
+# voci estranee si dicono: sono le tre guardie contro il rapporto di un altro.
 API_RAPPORTI = "/products-integration-reports"
+# Pagine da 100 (misurato: `pageSize=100` accettato). Un pacchetto pieno fa
+# 10.000 righe, cioe' 100 pagine: il tetto copre esattamente quello, e oltre
+# non si indovina.
+RIGHE_PER_PAGINA = 100
+MAX_PAGINE_RAPPORTO = MAX_PER_PACCHETTO // RIGHE_PER_PAGINA
 # La chiave sotto cui viaggiano le schede nel corpo. ⚠️ Documentazione, non
 # vero: vedi l'avvertenza in testa al file.
 CHIAVE_SCHEDE = "products"
@@ -217,31 +279,6 @@ MAX_CORPO_NEL_MESSAGGIO = 300
 # elencano i piu' frequenti, e quel che si taglia si DICE.
 MAX_MOTIVI_NEL_REGISTRO = 20
 
-# ⚠️ LE CHIAVI CHE SANNO DI PAGINAZIONE, e perche' qui c'e' solo un SOSPETTO
-# e non un secondo giro di chiamate.
-#
-# Un pacchetto porta fino a 10.000 schede, ed e' del tutto plausibile che il
-# rapporto arrivi a pagine. Un rapporto PAGINATO e uno genuinamente
-# INCOMPLETO, da qui, sono indistinguibili: tutti e due nominano meno
-# prodotti di quanti ne sono partiti.
-#
-# ⚠️ E la pagina successiva NON si va a chiedere alla cieca. Sarebbe
-# indovinare il nome di un parametro di ricerca — ed e' esattamente il
-# rischio che questo file rifiuta per il numero del pacchetto: un parametro
-# sbagliato su un server indulgente non risponde 404, risponde
-# QUALCOS'ALTRO — un'altra pagina, un altro rapporto — che verrebbe letto
-# come se fosse il nostro. Aggiungerlo proprio nel punto in cui il modulo
-# puo' mentire sarebbe il peggior posto possibile.
-#
-# Quel che si fa e' rendere il caso DIAGNOSTICABILE: se il corpo porta una
-# chiave che sa di paginazione, la riga rossa lo dice. La paginazione vera si
-# scrive dopo la prima lettura reale, sulla forma osservata.
-#
-# Il confronto e' in minuscolo e senza trattini bassi, cosi' `totalCount` e
-# `total_count` sono la stessa cosa: Octopia mescola le due convenzioni a
-# seconda dell'endpoint.
-CHIAVI_PAGINAZIONE = ("pagination", "total", "totalcount", "page",
-                      "pagecount", "nextpage", "hasmore", "links")
 
 # ------------------------------------------------------------------------
 # I TRE DEBITI DEI COMPITI PRECEDENTI, e perche' si saldano QUI e non in
@@ -399,26 +436,6 @@ def _elenco_corto(codici):
         "quanti": len(codici) - MAX_CODICI_NEL_MESSAGGIO}
 
 
-def _chiavi_di_paginazione(risposta):
-    """I nomi, come li scrive Cdiscount, delle chiavi che sanno di pagine.
-
-    ⚠️ Guarda il corpo GREZZO e anche quello scartato dell'involucro `data`:
-    non sappiamo quale delle due forme abbia il rapporto, e una paginazione
-    puo' stare tanto accanto ai dati quanto dentro. Vedi
-    `CHIAVI_PAGINAZIONE` per il perche' qui ci si ferma al sospetto.
-    """
-    trovate = []
-    for corpo in (risposta.corpo, risposta.dati):
-        if not isinstance(corpo, dict):
-            continue
-        for chiave in corpo:
-            nome = _testo(chiave)
-            if nome.lower().replace("_", "") in CHIAVI_PAGINAZIONE:
-                if nome not in trovate:
-                    trovate.append(nome)
-    return trovate
-
-
 @register_connector("cdiscount", "Cdiscount (Octopia)")
 class CdiscountConnector(MarketplaceConnector):
 
@@ -431,6 +448,11 @@ class CdiscountConnector(MarketplaceConnector):
     usa_immagini_feed = False
     usa_mappa_catalogo = False
     usa_presa_in_carico = False   # non esiste, su questo marketplace
+
+    # CONSEGNA 3 — i corrieri di Octopia (66, MISURATI) e la traduzione dei
+    # marchi del tronco: in Francia solo BRT e GLS. Vedi cdiscount_ordini.
+    carrier_codes = CORRIERI
+    carrier_brand_codes = MARCHI_CORRIERI
 
     default_base_url = CDISCOUNT_URL
 
@@ -632,72 +654,14 @@ class CdiscountConnector(MarketplaceConnector):
                 % self.channel.display_name)
         return canale
 
-    def _categoria(self):
-        """La categoria in cui nascono le schede — LA GUARDIA SERIA.
 
-        ⚠️ **Questa e' la protezione contro una categoria cambiata per
-        sbaglio, e non ce n'e' un'altra.** Il campo `cdiscount_categoria` non
-        ha `groups=` (scelta del Compito 7: dev'essere scrivibile dalla
-        schermata, come il gruppo di spedizione di Kaufland), e
-        `centrivo.channel` e' in scrittura a `base.group_user`: qualunque
-        utente interno puo' cambiarlo. Se il valore e' sbagliato, **tutte** le
-        schede del prossimo pacchetto nascono nel ramo sbagliato del catalogo
-        pubblico — fino a 10.000 — e lo si scopre tre giorni dopo, o mai.
 
-        Cosa questa guardia PUO' fare:
-
-        - fermarsi se la categoria manca;
-        - fermarsi se non ha la forma di un CODICE. ⚠️ E' il controllo che
-          conta davvero: l'errore vero non e' un codice storto, e' il NOME
-          della categoria incollato al posto del codice — «Cabines de
-          douche», con gli spazi e gli accenti. Un nome passerebbe qualunque
-          controllo di sola presenza e farebbe rifiutare il pacchetto intero;
-        - fermarsi se e' assurdamente lunga (vedi `MAX_CATEGORIA`);
-        - **dirla ad alta voce**: la categoria finisce nel registro e nella
-          notifica di ogni invio, cosi' un cambiamento si vede la prima volta
-          che si manda e non alla prima raccolta.
-
-        ⚠️ Cosa questa guardia NON puo' fare, e va detto chiaro: **verificare
-        che sia di LIVELLO 3**. Una categoria di primo livello ha la stessa
-        forma — sei caratteri — e da qui e' indistinguibile (lo dice gia'
-        `cdiscount_schede.corpo_scheda`). L'unico modo di saperlo e' leggerla
-        dal portale, ramo per ramo fino alla foglia. Chiedere a Cdiscount
-        (`GET /categories`) prima di ogni invio sarebbe possibile, ma il nome
-        di quell'endpoint non e' mai stato verificato sul vero: un 404 dovuto
-        al nostro percorso sbagliato bloccherebbe OGNI invio per sempre, ed e'
-        un guasto peggiore di quello che eviterebbe. Resta un seguito da fare
-        DOPO la prima lettura vera.
-        """
-        grezza = self.channel.sudo().cdiscount_categoria
-        categoria = _testo(grezza)
-        if not categoria:
-            raise UserError(_(
-                "Sul canale «%s» manca la categoria Cdiscount. Va letta dal "
-                "portale, ramo per ramo fino alla foglia, e dev'essere di "
-                "LIVELLO 3: le schede senza categoria vengono rifiutate, e "
-                "una categoria del livello sbagliato fa rifiutare il "
-                "pacchetto intero tre giorni dopo.")
-                % self.channel.display_name)
-        if len(categoria) > MAX_CATEGORIA:
-            raise UserError(_(
-                "La categoria del canale «%(canale)s» e' lunga %(quanti)d "
-                "caratteri e un codice di categoria Cdiscount ne fa sei: "
-                "quasi certamente e' stato incollato qualcosa d'altro. Non "
-                "si accorcia da qui — con la categoria sbagliata nascerebbe "
-                "un catalogo intero nel ramo sbagliato.")
-                % {"canale": self.channel.display_name,
-                   "quanti": len(categoria)})
-        if not FORMA_CATEGORIA.match(categoria):
-            raise UserError(_(
-                "La categoria del canale «%(canale)s» e' «%(categoria)s», e "
-                "non ha la forma di un CODICE (lettere e cifre, "
-                "eventualmente con trattini o trattini bassi). Quasi sempre "
-                "vuol dire che e' stato copiato il NOME della categoria "
-                "invece del suo codice: il nome fa rifiutare il pacchetto "
-                "intero, e lo si scopre tre giorni dopo.")
-                % {"canale": self.channel.display_name,
-                   "categoria": categoria})
-        return categoria
+    @staticmethod
+    def _categoria_in_chiaro(esito):
+        """Il codice della categoria e, se letta, la sua etichetta."""
+        nome = _testo(esito.get("categoria_nome"))
+        codice = _testo(esito.get("categoria")) or "?"
+        return "%s «%s»" % (codice, nome) if nome else codice
 
     # ------------------------------------------------------------------
     # Da una riga `cdiscount.scheda` al corpo di una scheda
@@ -733,139 +697,9 @@ class CdiscountConnector(MarketplaceConnector):
                 % (chi, codice, MIN_GTIN, MAX_GTIN))
         return codice
 
-    def _marca(self, prodotto, chi):
-        """La marca del prodotto. ⚠️ DEBITO 2 (il tetto di lunghezza).
 
-        Viene dal modulo OCA `product_brand`, letto a runtime come fa gia'
-        BricoBravo (`_brand_value`): se il modulo non c'e', il campo non c'e'
-        e la scheda si ferma dicendo dove andare a mettere la marca — non
-        parte senza.
-        """
-        if not prodotto or "product_brand_id" not in prodotto._fields:
-            raise ValueError(
-                "%s: in Odoo non c'e' un campo marca sul prodotto (serve il "
-                "modulo OCA `product_brand`). Cdiscount confronta la marca "
-                "col proprio elenco e senza non accetta la scheda." % chi)
-        marca = prodotto.product_brand_id
-        nome = _testo(marca.name if marca else "")
-        if not nome:
-            raise ValueError(
-                "%s: il prodotto «%s» non ha una marca. Cdiscount la "
-                "confronta col proprio elenco, e una scheda senza marca non "
-                "passa." % (chi, prodotto.display_name))
-        return _entro_il_limite(nome, MAX_MARCA, chi, "la marca")
 
-    @staticmethod
-    def _immagini(riga):
-        """Gli indirizzi delle immagini della riga. ⚠️ DEBITO 3.
 
-        ⚠️ **La lista arriva gia' compattata, e non c'e' niente da
-        compattare.** Il pericolo dichiarato nel debito e' costruire la lista
-        da CAMPI ODOO A POSIZIONE FISSA — `immagine_1 … immagine_5` — dove
-        una casella vuota diventa un `False` in mezzo e fa cadere una scheda
-        perfettamente buona. Qui quei campi non esistono: gli indirizzi
-        stanno in UN SOLO campo di testo (`cdiscount.scheda.immagini`), sono
-        esattamente la cella scritta nel file dei contenuti, e
-        `elenco_immagini()` la spezza sulla virgola senza aggiungere ne'
-        togliere posizioni. Con una sola immagine si ottiene una lista di UNO.
-        Il banco lo verifica.
-
-        ⚠️ E cio' che resta vuoto NON si toglie qui, ed e' voluto: una voce
-        vuota in mezzo vuol dire che qualcuno ha lasciato un buco nella cella,
-        e togliere un buco fa scivolare avanti tutte le immagini seguenti —
-        il prodotto va in vetrina con la copertina sbagliata, senza che resti
-        traccia da nessuna parte. La rifiuta `_immagini_valide` nominando la
-        posizione, ed e' la stessa scelta gia' presa e motivata in tre punti
-        (`cdiscount_schede._immagini_valide`, `cdiscount_contenuti._immagini`,
-        `cdiscount.scheda.elenco_immagini`). Compattare qui le
-        contraddirebbe tutte e tre in silenzio.
-        """
-        return riga.elenco_immagini()
-
-    def _corpo(self, riga, categoria):
-        """Il corpo di UNA scheda, o un ValueError che nomina il prodotto.
-
-        ⚠️ Il tipo del rifiuto e' un contratto: **solo `ValueError`**, come in
-        `cdiscount_schede` e in `cdiscount_contenuti`. Chi compone il giro lo
-        cattura riga per riga per scartare quella riga; un tipo diverso
-        farebbe morire l'invio intero invece di scartare una scheda.
-        """
-        codice = _testo(riga.codice)
-        chi = _chi(codice)
-        _entro_il_limite(codice, MAX_RIFERIMENTO, chi,
-                         "il riferimento venditore")
-        prodotto = riga.product_id
-        if not prodotto:
-            raise ValueError(
-                "%s: nessun prodotto Odoo collegato. Il GTIN e la marca si "
-                "prendono dal prodotto: senza, la scheda non si compone." % chi)
-        return corpo_scheda(
-            codice=codice,
-            gtin=self._gtin(prodotto, chi),
-            titolo=riga.titolo,
-            descrizione=riga.descrizione,
-            immagini=self._immagini(riga),
-            categoria=categoria,
-            marca=self._marca(prodotto, chi),
-        )
-
-    # ------------------------------------------------------------------
-    # Chi parte
-    # ------------------------------------------------------------------
-    def _candidate(self):
-        """Il dominio delle schede che possono partire.
-
-        Tre condizioni, e la terza e' l'unica interessante:
-
-        1. sono di QUESTO canale;
-        2. hanno tutti e tre i contenuti (`CON_CONTENUTI`: titolo,
-           descrizione e immagini — il dominio vive nel modello e lo usano in
-           tre);
-        3. **o non sono mai partite, o Cdiscount ha detto di NO.**
-
-        ⚠️ La terza e' un'asimmetria voluta, e sta tutta qui: `rifiutato`
-        significa che Cdiscount ci ha detto che la scheda **non e' nata**, e
-        allora rimandarla non puo' duplicare niente — e' anzi l'unico modo
-        perche' una traduzione corretta arrivi a destinazione. `sconosciuto`
-        **con un pacchetto** e' l'opposto: e' un pacchetto scaduto senza
-        esito, la scheda potrebbe esistere gia' la' fuori, e rimandarla
-        creerebbe un doppione su un catalogo pubblico. Quelle si guardano a
-        mano.
-
-        ⚠️ E `riuscito` e `in_attesa` non compaiono affatto: la prima esiste
-        gia', la seconda e' in volo.
-
-        ⚠️ **Ma una `rifiutato` aspetta che il suo pacchetto sia CHIUSO.** Il
-        verdetto di rifiuto puo' arrivare da un rapporto PARZIALE: in quel
-        caso il pacchetto resta `aperto` (regola 2 del raccoglitore) perche'
-        le altre sue schede non hanno ancora un verdetto, e il raccoglitore ci
-        ripassa ogni mezz'ora. Se la riga rifiutata ripartisse subito, si
-        staccherebbe da quel pacchetto per prendere il numero nuovo — e al
-        giro dopo il rapporto del pacchetto vecchio nominerebbe un codice che
-        li' dentro non c'e' piu': una VOCE ESTRANEA. Misurato: da li' scattava
-        l'attivita' «il rapporto non nomina nessuna scheda, e' il sospetto di
-        una CHIAVE SBAGLIATA su TUTTI i pacchetti» — che e' falsa, e che e' la
-        diagnosi piu' cara del modulo — e la riga di registro restava rossa a
-        ogni giro finche' il pacchetto non scadeva.
-
-        ⚠️ Il costo e' dichiarato: una scheda rifiutata di cui si corregge il
-        dato aspetta che il suo pacchetto si chiuda, e nel caso peggiore sono
-        i tre giorni della scadenza (che chiude il pacchetto a `scaduto`,
-        cioe' non piu' `aperto`, e la rimette in gioco da sola). In cambio non
-        si crea mai un disallineamento che nessuno sa leggere. La condizione e'
-        «il pacchetto non c'e' piu' OPPURE non e' piu' aperto», non «e'
-        chiuso»: un pacchetto cancellato lascia `pacchetto_id` vuoto
-        (`ondelete="set null"`), e una riga cosi' non deve restare ferma per
-        sempre.
-        """
-        return [("channel_id", "=", self.channel.id)] + list(CON_CONTENUTI) + [
-            "|",
-            "&", ("stato", "=", SCONOSCIUTO_SCHEDA),
-            ("pacchetto_id", "=", False),
-            "&", ("stato", "=", RIFIUTATO),
-            "|", ("pacchetto_id", "=", False),
-            ("pacchetto_id.stato", "!=", APERTO),
-        ]
 
     # ------------------------------------------------------------------
     # Il numero, e cosa si fa quando non c'e'
@@ -897,7 +731,8 @@ class CdiscountConnector(MarketplaceConnector):
                     return numero
         return ""
 
-    def _crea_pacchetto(self, numero, adesso, scade):
+    def _crea_pacchetto(self, numero, adesso, scade, tipo=TIPO_SCHEDE,
+                        pronto=True):
         """Scrive la riga del pacchetto e la manda SUBITO al database.
 
         ⚠️ Il `flush_all()` e' una CINTURA, e va detto com'e': il
@@ -913,6 +748,8 @@ class CdiscountConnector(MarketplaceConnector):
         self.env["cdiscount.pacchetto"].sudo().create({
             "channel_id": self.channel.id,
             "numero": numero,
+            "tipo": tipo,
+            "pronto": pronto,
             # `tipo` ha default «schede» sul modello, ed e' l'unico valore che
             # esiste oggi: le offerte sono la Consegna 2 e avranno il loro.
             "nato_il": adesso,
@@ -959,537 +796,7 @@ class CdiscountConnector(MarketplaceConnector):
         self._al_riparo(_leggi)
         return trovato.get("riga") or None
 
-    def _in_volo_senza_esito(self, righe, motivo):
-        """Le righe di un pacchetto di cui non sappiamo l'esito.
 
-        ⚠️ Passano a `in_attesa` — non restano `sconosciuto` — e non e' una
-        sfumatura: `sconosciuto` senza pacchetto e' precisamente lo stato di
-        chi PUO' RIPARTIRE (vedi `_candidate`), e al giro dopo il pacchetto
-        verrebbe rimandato alla cieca. Sono partite davvero: `in_attesa` lo
-        dice, le toglie dai candidati, e il motivo scritto sopra dice che
-        nessun raccoglitore le risolvera' da solo.
-
-        ⚠️⚠️ **E IL PACCHETTO SI STACCA, ed e' la seconda meta' della stessa
-        difesa.** Fra i candidati c'e' anche una `rifiutato` con addosso il
-        suo VECCHIO pacchetto, ormai chiuso (e' la regola di `_candidate`:
-        una rifiutata riparte quando il suo pacchetto non e' piu' aperto).
-        Scrivendo solo lo stato, quella riga diventava `in_attesa` **con un
-        pacchetto chiuso attaccato**: fuori dai candidati, fuori da
-        `_dominio_aperti` (il pacchetto non e' `aperto`), fuori da `ORFANE`
-        (che vuole il pacchetto assente) — e in mezzo alle «In attesa
-        dell'esito» vere, dove nessun filtro la distingueva. Il gemello esatto
-        del vicolo cieco che le arenate hanno chiuso, spostato di uno stato. E
-        non e' un caso di laboratorio: dopo ogni raccolta normale TUTTE le
-        rifiutate hanno un pacchetto `raccolto`, quindi basta un intoppo di
-        rete durante il rinvio.
-        
-        ⚠️ Staccarlo e' anche **la cosa vera**: quella riga non e' in nessun
-        pacchetto che Odoo conosca. O l'invio si e' fermato prima che un
-        pacchetto esistesse, o il numero non siamo riusciti a scriverlo, o non
-        siamo riusciti ad attaccarci le righe. Il vecchio pacchetto non
-        c'entra niente con il perche' la riga e' ferma, e lasciarlo li' era il
-        dato falso da cui il filtro e il messaggio prendevano la loro bugia.
-        Cosi' la riga ricade in `ORFANE`, che e' il criterio giusto per lei.
-
-        ⚠️ **Il numero vecchio non si perde**: si scrive nel motivo, come fa
-        il ripescaggio con le arenate. Dopo il distacco e' l'unico appiglio
-        per chi dovesse cercare a mano cosa c'era in quel pacchetto.
-
-        ⚠️ La LETTURA dei numeri vecchi sta dentro `_al_riparo`, e non e'
-        pignoleria: questo metodo lo si chiama quando qualcosa e' gia' andato
-        storto, e su una transazione abortita una SELECT non protetta si
-        porterebbe via l'unica scrittura che deve ancora riuscire. Se non si
-        riesce a leggerli, si scrive lo stesso — senza la nota sul pacchetto
-        vecchio, che e' un di piu'.
-        """
-        Scheda = self.env["cdiscount.scheda"].sudo()
-        # Le righe raggruppate per numero del pacchetto vecchio: i numeri
-        # distinti sono pochi (nessuno, o quello del rifiuto), e un `write`
-        # per riga su 10.000 righe sarebbero 10.000 UPDATE.
-        gruppi = {}
-
-        def _leggi():
-            for riga in righe:
-                gruppi.setdefault(_testo(riga.pacchetto_id.numero),
-                                  []).append(riga.id)
-
-        if not self._al_riparo(_leggi):
-            gruppi = {"": [riga.id for riga in righe]}
-
-        fallita = 0
-        stretta = 0
-        for vecchio, ids in gruppi.items():
-            testo = motivo
-            if vecchio:
-                testo += _(
-                    " ⚠️ Questa scheda risultava ancora nel pacchetto "
-                    "%s, che era gia' chiuso: il collegamento e' stato tolto "
-                    "perche' non era piu' vero, e il numero resta scritto qui "
-                    "per chi dovesse cercarlo.") % vecchio
-            gruppo = Scheda.browse(ids)
-            if self._al_riparo(gruppo.write, {
-                    "stato": IN_ATTESA,
-                    # ⚠️ Vedi sopra: senza questa riga la scheda finisce in un
-                    # vicolo cieco che nessun filtro mostra.
-                    "pacchetto_id": False,
-                    "motivo": testo}):
-                continue
-            # ⚠️⚠️ IL RIPIEGO PIU' STRETTO, e non e' prudenza generica: uno
-            # dei cinque percorsi che arrivano qui e' proprio «la scrittura
-            # delle righe e' fallita», e la causa tipica e' un vincolo su
-            # `pacchetto_id`. Insistere con lo stesso campo che ha appena
-            # rotto sarebbe insistere sull'unica cosa che sappiamo non
-            # funzionare, e le righe resterebbero `sconosciuto` senza
-            # pacchetto — cioe' CANDIDATE, e al giro dopo ripartirebbero
-            # mentre Cdiscount forse le sta gia' lavorando. E' il difetto D2
-            # del Compito 9, e la regola che ne e' uscita vale ancora: **il
-            # messaggio non e' la protezione, il meccanismo lo e'**, e questo
-            # secondo tentativo tocca meno cose del primo, quindi ha una
-            # possibilita' vera di riuscire.
-            #
-            # ⚠️ Cosi' pero' la riga resta `in_attesa` col vecchio pacchetto
-            # chiuso addosso, che e' proprio la combinazione senza uscita di
-            # cui sopra: e' per questo che `ARENATE` prende ANCHE `in_attesa`.
-            # La rete di sicurezza esiste perche' questo ramo esiste.
-            if self._al_riparo(gruppo.write, {"stato": IN_ATTESA,
-                                              "motivo": testo}):
-                stretta += len(ids)
-                continue
-            fallita += len(ids)
-        if stretta:
-            _logger.error(
-                "Cdiscount sul canale %s: su %s righe non si e' potuto "
-                "staccare il pacchetto vecchio; restano «in attesa» con "
-                "quello addosso e si vedono nel filtro «Senza verdetto, "
-                "pacchetto chiuso». Motivo: %s",
-                self.channel.display_name, stretta, motivo)
-        if fallita:
-            _logger.error(
-                "Cdiscount sul canale %s: non si e' nemmeno potuto scrivere "
-                "il motivo su %s delle %s righe di un pacchetto di esito "
-                "ignoto. Motivo: %s", self.channel.display_name, fallita,
-                len(righe), motivo)
-
-    # ------------------------------------------------------------------
-    # IL GIRO
-    # ------------------------------------------------------------------
-    def manda_schede(self, limite=None):
-        """Manda a Cdiscount le schede pronte, a pacchetti.
-
-        `limite` conta le SCHEDE e serve alla prima prova sul vero: si parte
-        da una sola, si guarda sul portale, e solo dopo si manda il resto.
-
-        L'ordine delle cose, e non e' negoziabile:
-
-        1. il turno (un giro per volta su questo canale);
-        2. le guardie — credenziali, canale di vendita, **categoria**, e
-           almeno una riga con contenuti;
-        3. la composizione: una riga che non si compone si SCARTA nominando
-           il perche', e non ferma le altre;
-        4. per ogni pacchetto: si scarica quel che e' in canna, si chiama, e
-           **appena arriva il numero lo si scrive**, da solo, nel suo
-           savepoint;
-        5. solo DOPO le righe passano a `in_attesa` col loro pacchetto.
-        """
-        # ⚠️ Guardia 0 — il turno. Prima di tutto: due giri sovrapposti
-        # leggerebbero le stesse righe e manderebbero due volte lo stesso
-        # catalogo. La meccanica sta nella classe base, promossa li' apposta.
-        self._prendi_il_turno(_("invio delle schede"))
-
-        # Le guardie di configurazione, tutte prima di sporcare qualcosa.
-        # ⚠️ La categoria per prima fra quelle che parlano del contenuto: e'
-        # la piu' costosa da sbagliare, e non costa niente controllarla.
-        categoria = self._categoria()
-        client = self._client()
-        # ⚠️ Il gettone si chiede ADESSO e non alla prima chiamata: se le
-        # credenziali sono sbagliate si deve leggere «il gettone non e'
-        # arrivato», non un esito ignoto che invita a rileggere un pacchetto
-        # che non e' mai partito.
-        self._gettone()
-
-        Scheda = self.env["cdiscount.scheda"].sudo()
-        dominio = self._candidate()
-        candidate = Scheda.search(dominio)
-        if not candidate:
-            # ⚠️ Una UserError e non un successo a zero: «non c'e' niente da
-            # mandare» detto in verde si legge «e' andato tutto bene», ed e'
-            # la frase che nasconde 347 schede senza traduzione francese.
-            raise UserError(_(
-                "Sul canale «%s» non c'e' nessuna scheda pronta da mandare. "
-                "Una scheda parte solo se ha titolo, descrizione e immagini "
-                "(in francese) e non e' gia' partita: carica il file dei "
-                "contenuti e guarda quante restano senza.")
-                % self.channel.display_name)
-
-        esito = {"mandate": 0, "pacchetti": 0, "scartate": 0, "rifiutate": 0,
-                 "incerte": 0, "non_partite": 0, "rimaste": 0,
-                 "categoria": categoria}
-        motivi = {}
-        fermata = None
-
-        # --------------------------------------------------------------
-        # 1) La composizione. Non tocca la rete: una riga che non si compone
-        #    si scarta nominando il prodotto, e le altre proseguono.
-        # --------------------------------------------------------------
-        tetto = MAX_SCHEDE_PER_GIRO
-        if limite:
-            tetto = min(limite, MAX_SCHEDE_PER_GIRO)
-        componibili = []
-        troncato = False
-        for riga in candidate:
-            if len(componibili) >= tetto:
-                troncato = True
-                break
-            try:
-                corpo = self._corpo(riga, categoria)
-            except ValueError as errore:
-                motivo = str(errore)
-                # ⚠️ Il ritorno di `_al_riparo` non si legge QUI, ed e'
-                # deliberato: la riga e' scartata perche' non si compone, non
-                # perche' la nota sia stata scritta. Se la nota non si scrive,
-                # `_al_riparo` lascia il traceback nel registro di sistema.
-                self._al_riparo(riga.write, {"motivo": motivo})
-                esito["scartate"] += 1
-                motivi[motivo] = motivi.get(motivo, 0) + 1
-                continue
-            componibili.append((riga, corpo))
-
-        if troncato and not limite:
-            fermata = _(
-                "Il giro si e' fermato al tetto di %s schede per volta, per "
-                "non farsi uccidere dal limite di tempo del worker — che si "
-                "porterebbe via anche il numero dei pacchetti gia' partiti. "
-                "Ripetere per continuare.") % MAX_SCHEDE_PER_GIRO
-
-        if not componibili:
-            # Tutte scartate: nessuna chiamata, ma il conto e i motivi si
-            # scrivono lo stesso — sono la notizia.
-            return self._chiudi(dominio, esito, motivi, fermata)
-
-        # --------------------------------------------------------------
-        # 2) I pacchetti.
-        # --------------------------------------------------------------
-        gruppi = pacchetti(componibili)
-        partenza = time.monotonic()
-        for gruppo in gruppi:
-            if esito["pacchetti"] >= MAX_PACCHETTI_PER_GIRO:
-                fermata = _(
-                    "Il giro si e' fermato dopo %s pacchetti, per non farsi "
-                    "uccidere dal limite di tempo del worker. Ripetere per "
-                    "continuare.") % MAX_PACCHETTI_PER_GIRO
-                break
-            # ⚠️ Il tempo si guarda solo DOPO il primo pacchetto: altrimenti
-            # un canale lento non manderebbe mai niente.
-            if esito["pacchetti"] and (
-                    time.monotonic() - partenza > SECONDI_PER_GIRO):
-                fermata = _(
-                    "Il giro si e' fermato da solo dopo %s secondi per non "
-                    "farsi uccidere dal limite di tempo del worker — che "
-                    "annullerebbe anche i numeri dei pacchetti gia' partiti. "
-                    "Ripetere per continuare.") % SECONDI_PER_GIRO
-                break
-
-            righe = Scheda.browse([riga.id for riga, _corpo in gruppo])
-            corpo = {CHIAVE_SCHEDE: [uno for _riga, uno in gruppo]}
-            # ⚠️ Assegnato PRIMA di qualunque cosa che possa sollevare, cosi'
-            # l'`except` generico lo trova sempre definito e puo' NOMINARLO
-            # quando il guasto capita dopo che il numero e' arrivato. Senza,
-            # l'unico posto in cui quel numero compariva era un
-            # `_logger.error` che in quel salto non viene eseguito — e un
-            # numero che non si sa e' un esito perso. (Stare fuori dal `try`
-            # e' cosmetico: Python ha scope di funzione, non di blocco. La
-            # proprieta' vera e' l'ordine, non la posizione.)
-            numero = ""
-            try:
-                # ⚠️ SI SCARICA PRIMA DI CHIAMARE, ed e' una CINTURA
-                # dichiarata. Il `cr.savepoint()` di Odoo scarica da solo
-                # ENTRANDO, cioe' prima che il savepoint esista: una
-                # scrittura rimasta in canna esploderebbe li', FUORI da
-                # qualunque protezione, e la transazione andrebbe in stato
-                # abortito proprio mentre sta per arrivare un numero da
-                # scrivere. Oggi in canna non c'e' niente — le note degli
-                # scarti sono gia' passate dai loro savepoint — e infatti il
-                # banco non riesce a punire chi togliesse questa riga: e'
-                # dichiarato fra le mutazioni sopravvissute. Resta perche' il
-                # giorno in cui qualcuno aggiunge una scrittura qui sopra,
-                # senza savepoint, il danno sarebbe il peggiore del modulo.
-                self.env.flush_all()
-
-                risposta = client.chiama("POST", API_SCHEDE, corpo)
-
-                if getattr(risposta, "prevolo", False):
-                    # ⚠️ NON E' PARTITO NIENTE, ed e' l'opposto dell'esito
-                    # ignoto qui sotto benche' lo stato sia lo stesso 0.
-                    # `chiama()` promette di non sollevare mai, e per
-                    # mantenerla trasforma in risposta a stato 0 anche i due
-                    # passi che stanno PRIMA della rete: il gettone non
-                    # ottenuto e il carico non serializzabile. In quei due
-                    # casi nessun byte ha lasciato questa macchina, quindi
-                    # Cdiscount non puo' aver creato niente e non c'e' nessun
-                    # doppione da temere: le righe restano come sono —
-                    # candidate — e ripartono al prossimo giro. Congelarle
-                    # `in_attesa` senza pacchetto, come fa il ramo incerto,
-                    # le manderebbe nel limbo delle orfane e direbbe di
-                    # RILEGGERE cosa c'e' la' fuori: fino a 10.000 righe da
-                    # ripescare a mano per un guasto che sta tutto da questa
-                    # parte. Vedi `RispostaCdiscount.prevolo`.
-                    #
-                    # ⚠️ Ci si ferma lo stesso (`break`): il guasto e' del
-                    # nostro lato e si ripresenterebbe identico sul pacchetto
-                    # dopo — il gettone e' lo stesso per tutto il giro.
-                    esito["non_partite"] += len(gruppo)
-                    fermata = _(
-                        "Il giro si e' fermato PRIMA di chiamare Cdiscount: "
-                        "%(perche)s. ⚠️ Non e' partito niente e nessuna "
-                        "scheda e' nata la' fuori: e' un guasto dal nostro "
-                        "lato. Queste %(quante)s schede NON sono state "
-                        "toccate e ripartiranno al prossimo invio, senza "
-                        "rischio di doppioni. Non c'e' niente da rileggere "
-                        "su Cdiscount: si corregge la causa e si ripete.")
-                    fermata = fermata % {"perche": risposta.messaggio,
-                                         "quante": len(gruppo)}
-                    _logger.error("Cdiscount sul canale %s: %s",
-                                  self.channel.display_name, fermata)
-                    # ⚠️ Il motivo si scrive, lo STATO no: e' cio' che le
-                    # tiene candidate. Il messaggio non e' la protezione, il
-                    # meccanismo lo e' — qui il meccanismo e' non scrivere.
-                    self._al_riparo(righe.write, {"motivo": fermata})
-                    self._al_riparo(
-                        self._registra, "cdiscount_manda_pacchetto", "error",
-                        fermata, str(corpo)[:MAX_PAYLOAD])
-                    break
-
-                incerta = self._causa_incerta(risposta)
-                if incerta:
-                    # ⚠️ ESITO IGNOTO: CI SI FERMA E NON SI RITENTA. Il
-                    # pacchetto puo' essere stato preso lo stesso, e
-                    # rimandarlo raddoppierebbe fino a 10.000 schede su un
-                    # catalogo pubblico. Va RILETTO, non rimandato.
-                    esito["incerte"] += len(gruppo)
-                    fermata = _(
-                        "Esito IGNOTO su un pacchetto di %(quante)s schede: "
-                        "%(perche)s. Ci si ferma e non si ritenta: il "
-                        "pacchetto puo' essere stato preso lo stesso, e "
-                        "rimandarlo creerebbe le stesse schede due volte sul "
-                        "catalogo. Va RILETTO — «%(dove)s» elenca le schede "
-                        "nostre — prima di mandare altro.")
-                    fermata = fermata % {"quante": len(gruppo),
-                                         "perche": incerta,
-                                         "dove": "GET %s" % API_SCHEDE_NOSTRE}
-                    _logger.error("Cdiscount sul canale %s: %s",
-                                  self.channel.display_name, fermata)
-                    self._in_volo_senza_esito(righe, fermata)
-                    self._al_riparo(
-                        self._registra, "cdiscount_manda_pacchetto", "error",
-                        fermata, str(corpo)[:MAX_PAYLOAD])
-                    break
-
-                if not risposta.ok:
-                    # Rifiuto CERTO: il pacchetto non e' nato, e nessuna
-                    # scheda con lui. Le righe restano candidate — e' il
-                    # verso giusto: si corregge il dato e si rimanda.
-                    motivo = self._motivo_stato(risposta.stato,
-                                                risposta.messaggio)
-                    esito["rifiutate"] += len(gruppo)
-                    motivi[motivo] = motivi.get(motivo, 0) + len(gruppo)
-                    self._al_riparo(righe.write, {"motivo": _(
-                        "Cdiscount ha rifiutato il PACCHETTO INTERO in cui "
-                        "questa scheda era: %s") % motivo})
-                    # ⚠️ Anche una riga di REGISTRO passa dal savepoint. Un
-                    # guasto scrivendo il registro non deve potersi portare
-                    # via il numero di un pacchetto scritto poco fa: qui si e'
-                    # dentro il giro, e i pacchetti precedenti sono gia'
-                    # partiti davvero.
-                    self._al_riparo(
-                        self._registra, "cdiscount_manda_pacchetto", "error",
-                        motivo, str(corpo)[:MAX_PAYLOAD])
-                    continue
-
-                numero = self._numero_pacchetto(risposta)
-                if not numero:
-                    # ⚠️ IL CASO PEGGIORE, ED E' GIA' SUCCESSO IN CASA: su
-                    # Kaufland, il 2026-08-25, 165 offerte sono nate senza
-                    # che ne conoscessimo l'identificativo. Qui e' anche piu'
-                    # grave: Cdiscount ha PRESO il pacchetto, ci lavora, e
-                    # senza il numero l'esito e' irrecuperabile fra tre
-                    # giorni. Non si inventa un numero e non si ritenta.
-                    esito["incerte"] += len(gruppo)
-                    fermata = _(
-                        "Cdiscount ha ACCETTATO un pacchetto di %(quante)s "
-                        "schede ma la risposta non porta nessun numero di "
-                        "pacchetto: %(corpo)s. Senza numero l'esito non e' "
-                        "piu' recuperabile, e fra tre giorni non lo sara' "
-                        "per nessuno. NON si rimanda: va guardato cosa c'e' "
-                        "davvero la' fuori con «%(dove)s».") % {
-                            "quante": len(gruppo),
-                            "corpo": (risposta.testo or "")[:300]
-                            or _("risposta vuota"),
-                            "dove": "GET %s" % API_SCHEDE_NOSTRE}
-                    _logger.error("Cdiscount sul canale %s: %s",
-                                  self.channel.display_name, fermata)
-                    self._in_volo_senza_esito(righe, fermata)
-                    self._al_riparo(
-                        self._registra, "cdiscount_manda_pacchetto", "error",
-                        fermata, str(corpo)[:MAX_PAYLOAD])
-                    break
-
-                # ------------------------------------------------------
-                # ⚠️⚠️ IL NUMERO, PRIMA DI QUALUNQUE ALTRA COSA.
-                # Nel suo savepoint, da solo, e scaricato subito. Tutto cio'
-                # che viene dopo puo' fallire: il numero deve restare.
-                # ------------------------------------------------------
-                adesso = fields.Datetime.to_datetime(fields.Datetime.now())
-                scade = adesso + timedelta(days=GIORNI_ESITO)
-                scritto = self._al_riparo(self._crea_pacchetto, numero,
-                                          adesso, scade)
-                pacchetto = (self._pacchetto_scritto(numero)
-                             if scritto else None)
-                if not pacchetto:
-                    esito["incerte"] += len(gruppo)
-                    fermata = _(
-                        "Il pacchetto %(numero)s e' stato accettato da "
-                        "Cdiscount ma il suo numero NON si e' potuto "
-                        "scrivere in Odoo. E' scritto qui e nel registro di "
-                        "sistema, e va copiato a mano prima che si perda: "
-                        "l'esito di %(quante)s schede scade fra %(giorni)s "
-                        "giorni. Non si manda altro.") % {
-                            "numero": numero, "quante": len(gruppo),
-                            "giorni": GIORNI_ESITO}
-                    # ⚠️ La causa piu' probabile e' il vincolo
-                    # `unique(channel_id, numero)`: quel numero su questo
-                    # canale c'e' GIA'. Non si attaccano le righe a quella
-                    # riga — non sappiamo se sia lo stesso pacchetto, e la
-                    # sua finestra di tre giorni e' un'altra — ma lo si dice,
-                    # perche' cambia completamente cosa andare a guardare.
-                    if self._pacchetto_scritto(numero):
-                        fermata += _(
-                            " ⚠️ Un pacchetto con questo numero risulta già "
-                            "registrato su questo canale: o Cdiscount ha "
-                            "ridato lo stesso numero, o questo invio è un "
-                            "doppione di uno appena fatto.")
-                    # ⚠️ `_logger.error` con il numero dentro: il registro di
-                    # sistema e' l'unica cosa che un rollback non tocca.
-                    _logger.error(
-                        "Cdiscount sul canale %s: PACCHETTO %s ACCETTATO E "
-                        "NON SCRITTO. Scade il %s. Schede: %s",
-                        self.channel.display_name, numero, scade,
-                        ", ".join(_testo(r.codice) for r, _c in gruppo[:50]))
-                    self._in_volo_senza_esito(righe, fermata)
-                    self._al_riparo(
-                        self._registra, "cdiscount_manda_pacchetto", "error",
-                        fermata, str(corpo)[:MAX_PAYLOAD], numero)
-                    break
-
-                # Il numero e' al sicuro: da qui in poi si conta.
-                esito["pacchetti"] += 1
-
-                # ⚠️ E QUESTA E' «L'ALTRA COSA»: se esplode, il numero resta.
-                if not self._al_riparo(righe.write, {
-                        "stato": IN_ATTESA,
-                        "pacchetto_id": pacchetto.id,
-                        # La nota vecchia si toglie: una riga ripartita che
-                        # tiene addosso il motivo del rifiuto precedente si
-                        # legge come rifiutata di nuovo.
-                        "motivo": False}):
-                    fermata = _(
-                        "Il pacchetto %(numero)s e' partito e il suo numero "
-                        "e' salvo, ma le %(quante)s schede che conteneva non "
-                        "si sono potute segnare «in attesa». Il raccoglitore "
-                        "leggera' l'esito del pacchetto ma non trovera' le "
-                        "righe a cui attribuirlo: vanno guardate a mano "
-                        "prima di rimandarle. Non si manda altro.") % {
-                            "numero": numero, "quante": len(gruppo)}
-                    _logger.error("Cdiscount sul canale %s: %s",
-                                  self.channel.display_name, fermata)
-                    # ⚠️ E SI TOLGONO DAI CANDIDATI LO STESSO. Era il difetto
-                    # peggiore di questo ramo: il numero restava — quello si'
-                    # — ma le righe restavano `sconosciuto` SENZA pacchetto,
-                    # cioe' esattamente il profilo di `_candidate()`. Chi
-                    # rileggeva la notifica («Restano da mandare: 1») e
-                    # ricliccava le rimandava in un pacchetto nuovo mentre
-                    # Cdiscount stava ancora lavorando il primo: doppioni su
-                    # un catalogo pubblico, cioe' il danno che questo compito
-                    # esiste per impedire.
-                    #
-                    # ⚠️ L'inversione era la parte istruttiva: tutti i rami
-                    # INCERTI le toglievano dai candidati, e l'unico a
-                    # lasciarle dentro era il ramo CERTO — quello in cui il
-                    # pacchetto e' partito davvero e il numero e' in banca
-                    # dati. E il messaggio non e' la protezione: il
-                    # meccanismo lo e'. La scrittura qui e' piu' stretta di
-                    # quella appena fallita (niente `pacchetto_id`), quindi
-                    # ha una possibilita' vera di riuscire; se fallisce
-                    # anche lei, `_in_volo_senza_esito` lo grida.
-                    self._in_volo_senza_esito(righe, fermata)
-                    self._al_riparo(
-                        self._registra, "cdiscount_manda_pacchetto", "error",
-                        fermata, None, numero)
-                    break
-
-                esito["mandate"] += len(gruppo)
-                self._al_riparo(
-                    self._registra, "cdiscount_manda_pacchetto", "success",
-                    _("Pacchetto %(numero)s: %(quante)s schede, categoria "
-                      "%(categoria)s. L'esito scade il %(scade)s.")
-                    % {"numero": numero, "quante": len(gruppo),
-                       "categoria": categoria,
-                       "scade": self._ora_locale(scade)},
-                    str(corpo)[:MAX_PAYLOAD], numero)
-            except Exception as errore:  # noqa: BLE001
-                # ⚠️ Qui NON c'e' un savepoint attorno al gruppo, ed e' la
-                # scelta portante di tutto il metodo: un savepoint di gruppo
-                # riporterebbe indietro ANCHE la scrittura del numero quando
-                # qualcosa fallisce dopo, che e' esattamente il danno da
-                # evitare.
-                #
-                # ⚠️ Cosa si prende, allora. Quasi sempre un guasto di Python
-                # nostro, che la transazione non la tocca: ogni SCRITTURA di
-                # questo blocco passa da `_al_riparo`, cioe' ha gia' il suo
-                # savepoint, e le letture del pacchetto appena scritto pure
-                # (`_pacchetto_scritto`). **Ma non e' vero che qui non possa
-                # arrivare una transazione abortita**, e la riga che lo rende
-                # possibile e' UNA SOLA: il `self.env.flush_all()` in testa al
-                # `try`, che e' l'unica istruzione di database di tutto il
-                # blocco a stare FUORI da `_al_riparo` — vedi il commento che
-                # la accompagna, che dice la stessa cosa dall'altra parte.
-                #
-                # ⚠️ E in quel caso si esce comunque bene, ma per un altro
-                # motivo: le scritture qui sotto passano tutte da
-                # `_al_riparo`, e un savepoint e' proprio cio' che RIMETTE IN
-                # PIEDI una transazione abortita. Quindi la nota arriva sulle
-                # righe e la riga di registro si scrive. Chi togliesse
-                # `_al_riparo` da una di queste, credendo che «tanto qui la
-                # transazione e' sana», scoprirebbe che non lo e' — e il
-                # messaggio che nomina il pacchetto sparirebbe proprio nel
-                # caso peggiore.
-                esito["incerte"] += len(gruppo)
-                fermata = _(
-                    "Il giro si e' interrotto su un pacchetto di %(quante)s "
-                    "schede (%(tipo)s: %(errore)s). Non si sa se Cdiscount "
-                    "l'abbia preso: NON si rimanda, si guarda con "
-                    "«%(dove)s».") % {
-                        "quante": len(gruppo), "tipo": type(errore).__name__,
-                        "errore": errore,
-                        "dove": "GET %s" % API_SCHEDE_NOSTRE}
-                if numero:
-                    # ⚠️ Il numero c'era gia': allora questo non e' piu' un
-                    # esito ignoto, e' un pacchetto CERTO di cui si rischia di
-                    # perdere l'appiglio. Va scritto nel messaggio che una
-                    # persona legge, non solo nel registro di sistema.
-                    fermata += _(
-                        " ⚠️ Il numero di pacchetto era già arrivato ed è "
-                        "%(numero)s: l'esito di queste schede scade fra "
-                        "%(giorni)s giorni e va cercato con quel numero.") % {
-                            "numero": numero, "giorni": GIORNI_ESITO}
-                _logger.exception(
-                    "Cdiscount sul canale %s: giro interrotto su un "
-                    "pacchetto di %s schede. Numero di pacchetto: %s",
-                    self.channel.display_name, len(gruppo),
-                    numero or "non ancora arrivato")
-                self._in_volo_senza_esito(righe, fermata)
-                break
-
-        return self._chiudi(dominio, esito, motivi, fermata)
 
     # ------------------------------------------------------------------
     def _chiudi(self, dominio, esito, motivi, fermata):
@@ -1514,7 +821,7 @@ class CdiscountConnector(MarketplaceConnector):
                       "pacchetti (categoria %(categoria)s).")
                     % {"mandate": esito["mandate"],
                        "pacchetti": esito["pacchetti"],
-                       "categoria": esito["categoria"]},
+                       "categoria": self._categoria_in_chiaro(esito)},
                     _("Scartate prima di partire: %s.") % esito["scartate"],
                     _("In pacchetti rifiutati: %s.") % esito["rifiutate"],
                     _("Di esito ignoto: %s.") % esito["incerte"],
@@ -1615,8 +922,12 @@ class CdiscountConnector(MarketplaceConnector):
         `GET /products-integration-reports` — che di quei pacchetti non sa
         niente — e li terrebbe aperti fino alla scadenza.
         """
+        # ⚠️ Dal 2026-09-02 (Consegna 2) i pacchetti sono di DUE tipi, e
+        # il raccoglitore li guarda tutti e due: e' `_raccogli_uno` a
+        # biforcarsi sul tipo, perche' l'esito si chiede a due indirizzi
+        # diversi. La scadenza invece e' la stessa per tutti.
         return [("channel_id", "=", self.channel.id),
-                ("tipo", "=", TIPO_SCHEDE),
+                ("tipo", "in", (TIPO_SCHEDE, TIPO_OFFERTE)),
                 ("stato", "=", APERTO)]
 
     # ------------------------------------------------------------------
@@ -1765,6 +1076,22 @@ class CdiscountConnector(MarketplaceConnector):
         attesa», che si vedono, di un pacchetto aperto per sempre.
         """
         pacchetto.write({"stato": SCADUTO})
+        if _testo(pacchetto.tipo) == TIPO_OFFERTE:
+            Offerta = self.env["cdiscount.offerta"].sudo()
+            righe = Offerta.search([("pacchetto_id", "=", pacchetto.id),
+                                    ("stato", "=", IN_ATTESA)])
+            if righe:
+                righe.write({
+                    "stato": SCONOSCIUTO_SCHEDA,
+                    "motivo": _(
+                        "Il pacchetto di offerte %(numero)s e' scaduto il "
+                        "%(scade)s senza un esito: NON sappiamo se il prezzo "
+                        "e la giacenza mandati siano arrivati. Il prossimo "
+                        "allineamento li rimanda (un aggiornamento ripetuto "
+                        "non fa danni).")
+                    % {"numero": numero, "scade": self._ora_locale(scade)},
+                })
+            return len(righe)
         Scheda = self.env["cdiscount.scheda"].sudo()
         # ⚠️ SOLO le righe ancora `in_attesa`. Un pacchetto puo' essere stato
         # letto a meta' in un giro precedente (rapporto parziale, regola 2):
@@ -1932,9 +1259,9 @@ class CdiscountConnector(MarketplaceConnector):
               "erano partite. ⚠️ Non e' un rapporto a meta'.\n\n"
               "%(diagnosi)s\n\n"
               "Il codice con cui riconosciamo una scheda nel rapporto si "
-              "cerca sotto due nomi, «%(chiavi)s», presi dalla "
-              "documentazione: nessuno dei due e' mai stato visto su un "
-              "rapporto vero.\n\n"
+              "cerca sotto due nomi, «%(chiavi)s»: il primo e' quello "
+              "misurato sul vero il 2026-09-02, il secondo quello della "
+              "prima documentazione.\n\n"
               "Cosa fare: aprire il registro delle operazioni, cercare la "
               "riga di questo pacchetto e leggere il corpo del rapporto come "
               "e' arrivato. Se il rapporto nomina dei codici che non "
@@ -2140,7 +1467,7 @@ class CdiscountConnector(MarketplaceConnector):
                  "in_lavorazione": 0, "incerti": 0, "illeggibili": 0,
                  "guasti": 0, "rimasti": 0, "scaduti": 0,
                  "senza_verdetto": 0, "avvisati": 0, "avvisi_falliti": 0,
-                 "muti": 0}
+                 "muti": 0, "attese": 0}
         note = []
         # ⚠️ L'OROLOGIO SI LEGGE UNA VOLTA SOLA, qui. Due letture in due punti
         # diversi darebbero due «adesso» diversi, e la riga di confine (un
@@ -2166,9 +1493,11 @@ class CdiscountConnector(MarketplaceConnector):
            raccolta che fallisce non se la porta via;
         2. il gettone e il client, solo se resta qualcosa da interrogare;
         3. per ogni pacchetto vivo: `GET
-           /products-integration-reports/<numero>`, poi `leggi_rapporto` e
-           `riconcilia` — che sono gia' scritti, gia' provati e non si
-           reimplementano qui.
+           /products-integration-reports?packageId=<numero>`, pagina per
+           pagina finche' non ne arriva una a meta', poi `leggi_rapporto`
+           e `riconcilia` sul rapporto INTERO — che sono gia' scritti, gia'
+           provati e non si reimplementano qui. Il verdetto si scrive solo
+           quando TUTTE le pagine sono arrivate.
 
         ⚠️ **Non solleva quando non c'e' niente da raccogliere**, ed e'
         l'opposto di `manda_schede`. Quella e' un bottone: «non c'e' niente
@@ -2323,6 +1652,11 @@ class CdiscountConnector(MarketplaceConnector):
         mezz'ora, e tre giorni di «sto ancora aspettando» sono 144 righe per
         pacchetto che insegnano a non leggere il registro.
         """
+        if _testo(pacchetto.tipo) == TIPO_OFFERTE:
+            # CONSEGNA 2: l'esito di un pacchetto di OFFERTE si chiede a un
+            # altro indirizzo e ha un'altra forma. Stesse regole.
+            return self._raccogli_offerte(pacchetto, numero, client)
+
         Scheda = self.env["cdiscount.scheda"].sudo()
         # ⚠️ TUTTE le righe del pacchetto, non le sole `in_attesa`. «Quanti ne
         # sono partiti» e' il numero contro cui si misura il rapporto (regola
@@ -2331,27 +1665,81 @@ class CdiscountConnector(MarketplaceConnector):
         # avevamo mandato.
         righe = Scheda.search([("pacchetto_id", "=", pacchetto.id)])
 
-        # ⚠️ Il numero va nel percorso ed e' ROBA CHE ARRIVA DA FUORI: e'
-        # Cdiscount a sceglierlo, e `quote` lo mette al riparo dal giorno in
-        # cui contiene una barra o uno spazio.
-        risposta = client.chiama(
-            "GET", "%s/%s" % (API_RAPPORTI, quote(numero, safe="")))
+        # ⚠️ IL RAPPORTO SI LEGGE TUTTO, PAGINA PER PAGINA, PRIMA DI SCRIVERE
+        # QUALUNQUE VERDETTO. Una pagina piena chiede la successiva; una
+        # successiva che non arriva rende incerto il pacchetto INTERO.
+        # Scrivere la prima pagina e aspettare la seconda lascerebbe righe
+        # con un verdetto e un pacchetto aperto — un rapporto che si rilegge,
+        # e le righe gia' giudicate che tornano come «estranee».
+        #
+        # ⚠️ Il numero e' ROBA CHE ARRIVA DA FUORI: e' Cdiscount a sceglierlo,
+        # e `urlencode` lo mette al riparo dal giorno in cui contiene un
+        # carattere che in una query non puo' stare.
+        righe_rapporto = []
+        pagine = 0
+        risposta = None
+        completo = False
+        while True:
+            if pagine >= MAX_PAGINE_RAPPORTO:
+                # ⚠️ Oltre le 100 pagine il rapporto dice piu' righe di
+                # quante un pacchetto possa portarne: non si indovina, non
+                # si scrive niente, si dice.
+                return ({"incerti": 1}, None, _(
+                    "Pacchetto %(numero)s: il rapporto supera %(pagine)s "
+                    "pagine da %(righe)s, cioe' piu' righe di quante un "
+                    "pacchetto possa portarne. Non si scrive niente e il "
+                    "pacchetto resta aperto: va guardato prima che scada il "
+                    "%(scade)s.") % {"numero": numero,
+                                     "pagine": MAX_PAGINE_RAPPORTO,
+                                     "righe": RIGHE_PER_PAGINA,
+                                     "scade": self._ora_locale(
+                                         pacchetto.scade_il)})
+            pagine += 1
+            risposta = client.chiama(
+                "GET", "%s?%s" % (API_RAPPORTI, urlencode(
+                    {"packageId": numero, "pageIndex": pagine,
+                     "pageSize": RIGHE_PER_PAGINA})))
 
-        incerta = self._causa_incerta(risposta)
-        if incerta:
-            # ⚠️ Non e' un verdetto: la rete e' caduta o il loro lato ha
-            # risposto 5xx. Non si scrive niente, il pacchetto resta aperto e
-            # si ripassa. A differenza dell'INVIO, qui un esito incerto non
-            # e' pericoloso — una GET non crea niente la' fuori — e infatti
-            # NON ci si ferma: gli altri pacchetti si raccolgono lo stesso.
-            return ({"incerti": 1}, None, _(
-                "Pacchetto %(numero)s: l'esito non si e' potuto leggere "
-                "(%(perche)s). Resta aperto e si riprova; scade il "
-                "%(scade)s.") % {"numero": numero, "perche": incerta,
-                                 "scade": self._ora_locale(
-                                     pacchetto.scade_il)})
+            incerta = (self._causa_incerta(risposta)
+                       or self._quota_esaurita(risposta))
+            if incerta:
+                # ⚠️ Non e' un verdetto: la rete e' caduta, il loro lato ha
+                # risposto 5xx, o la quota oraria e' finita. Non si scrive
+                # niente — NEMMENO le pagine gia' lette — il pacchetto resta
+                # aperto e si ripassa. A differenza dell'INVIO, qui un esito
+                # incerto non e' pericoloso (una GET non crea niente la'
+                # fuori) e infatti NON ci si ferma: gli altri pacchetti si
+                # raccolgono lo stesso.
+                dove = ""
+                if pagine > 1:
+                    dove = _(" alla pagina %s") % pagine
+                return ({"incerti": 1}, None, _(
+                    "Pacchetto %(numero)s: l'esito non si e' potuto leggere"
+                    "%(dove)s (%(perche)s). Resta aperto e si riprova; scade "
+                    "il %(scade)s.") % {"numero": numero, "dove": dove,
+                                        "perche": incerta,
+                                        "scade": self._ora_locale(
+                                            pacchetto.scade_il)})
+            if not risposta.ok:
+                break
+            pagina = risposta.dati
+            if not isinstance(pagina, list):
+                # Un corpo che non porta `items` come elenco: illeggibile,
+                # e lo si dice sotto con il corpo com'e' arrivato.
+                break
+            righe_rapporto.extend(pagina)
+            if len(pagina) < RIGHE_PER_PAGINA:
+                completo = True
+                break
 
-        stato, esiti = leggi_rapporto(risposta.dati)
+        if completo:
+            stato, esiti = leggi_rapporto(righe_rapporto)
+        else:
+            # ⚠️ Si passa il corpo GREZZO dell'ultima risposta, non le righe
+            # unite: `leggi_rapporto` lo legge «sconosciuto» (non e' un
+            # elenco), e il ramo sotto scrive il dettaglio che aiuta.
+            stato, esiti = leggi_rapporto(
+                risposta.dati if risposta.ok else None)
 
         if stato == IN_LAVORAZIONE:
             # ⚠️ REGOLA 1. Non e' un guasto: Cdiscount sta lavorando. Si
@@ -2397,8 +1785,28 @@ class CdiscountConnector(MarketplaceConnector):
         conti = riconcilia(mandati, esiti)
         mancanti = set(conti["mancanti"])
 
+        # ⚠️ TUTTE VALIDATE E NIENT'ALTRO: Cdiscount ha accettato le schede e
+        # le sta ancora mettendo sul sito. E' «in lavorazione» a tutti gli
+        # effetti — niente scritto, niente registro, si ripassa — e NON e' un
+        # rapporto muto: ci ha nominate tutte. Le attese stanno gia' dentro
+        # le mancanti (vedi `riconcilia`), quindi il confronto e' esatto.
+        if (conti["attese"]
+                and not (conti["confermati"] or conti["rifiutati"]
+                         or conti["estranee"])
+                and len(conti["attese"]) == len(conti["mancanti"])):
+            return ({"in_lavorazione": 1, "attese": len(conti["attese"])},
+                    None, _(
+                "Pacchetto %(numero)s: Cdiscount ha validato le sue "
+                "%(quante)s schede e le sta ancora integrando. Non e' un "
+                "guasto; si ripassa. Scade il %(scade)s.")
+                % {"numero": numero, "quante": len(conti["attese"]),
+                   "scade": self._ora_locale(pacchetto.scade_il)})
+
         adesso = fields.Datetime.to_datetime(fields.Datetime.now())
-        riuscite = []
+        # ⚠️ Raggruppate per OPERAZIONE (e per motivo, sulle rifiutate): un
+        # pacchetto porta fino a 10.000 righe e una `write` per riga sarebbero
+        # 10.000 UPDATE. Le operazioni sono tre e i motivi distinti pochi.
+        riuscite = {}
         per_motivo = {}
         for riga in righe:
             codice = _codice(riga.codice)
@@ -2422,27 +1830,32 @@ class CdiscountConnector(MarketplaceConnector):
             # senza che nessuno se ne accorga — e infatti, misurato, rendeva
             # invisibile la mutazione che toglieva la prima.
             verdetto = esiti[codice]
+            # ⚠️ L'OPERAZIONE SI CONSERVA: e' la risposta a «esisteva gia'?»
+            # che arriva solo col rapporto, e col rapporto sparirebbe. Una
+            # che non conosciamo resta vuota, e non cambia il verdetto.
+            operazione = _testo(verdetto.get("operazione")) or False
             if verdetto["esito"] == RIUSCITO:
-                riuscite.append(riga.id)
+                riuscite.setdefault(operazione, []).append(riga.id)
             else:
-                # ⚠️ Raggruppate per MOTIVO: un pacchetto porta fino a 10.000
-                # righe, e una `write` per riga sarebbero 10.000 UPDATE. I
-                # motivi distinti sono pochi (e' lo stesso campo sbagliato su
-                # tante schede), quindi il raggruppamento costa una manciata
-                # di scritture invece di diecimila.
-                per_motivo.setdefault(_testo(verdetto["motivo"]),
-                                      []).append(riga.id)
-        if riuscite:
+                per_motivo.setdefault(
+                    (_testo(verdetto["motivo"]), operazione),
+                    []).append(riga.id)
+        esistevano = 0
+        for operazione, ids in riuscite.items():
             # ⚠️ Il motivo vecchio si toglie: una scheda riuscita che tiene
             # addosso il motivo di un rifiuto precedente si legge come
             # rifiutata di nuovo.
-            Scheda.browse(riuscite).write({"stato": RIUSCITO,
-                                           "motivo": False,
-                                           "controllato_il": adesso})
-        for motivo, ids in per_motivo.items():
+            Scheda.browse(ids).write({"stato": RIUSCITO,
+                                      "motivo": False,
+                                      "controllato_il": adesso,
+                                      "operazione": operazione})
+            if operazione in (IDENTICA, MODIFICA):
+                esistevano += len(ids)
+        for (motivo, operazione), ids in per_motivo.items():
             Scheda.browse(ids).write({"stato": RIFIUTATO,
                                       "motivo": motivo or False,
-                                      "controllato_il": adesso})
+                                      "controllato_il": adesso,
+                                      "operazione": operazione})
 
         chiuso = not conti["mancanti"]
         if chiuso:
@@ -2454,7 +1867,8 @@ class CdiscountConnector(MarketplaceConnector):
         numeri = {"confermate": conti["confermati"],
                   "rifiutate": conti["rifiutati"],
                   "mancanti": len(conti["mancanti"]),
-                  "estranee": len(conti["estranee"])}
+                  "estranee": len(conti["estranee"]),
+                  "attese": len(conti["attese"])}
         if chiuso:
             numeri["chiusi"] = 1
         # ⚠️ IL RAPPORTO MUTO: PRONTO, e non nomina NEMMENO UNA delle nostre.
@@ -2473,16 +1887,43 @@ class CdiscountConnector(MarketplaceConnector):
         # nemmeno per spegnerlo. Cambia solo COSA SI DICE: vedi
         # `_riga_rapporto` e `_avvisa_rapporto_muto`, che si biforcano sulle
         # estranee perche' le due strade portano a guardare cose diverse.
+        # ⚠️ E UNA SCHEDA VALIDATA E' STATA NOMINATA: un rapporto di sole
+        # attese piu' qualche mancante vera non e' muto, sta lavorando.
         if conti["mancanti"] and not (conti["confermati"]
-                                      or conti["rifiutati"]):
+                                      or conti["rifiutati"]
+                                      or conti["attese"]):
             numeri["muti"] = 1
         return (numeri,
                 self._riga_rapporto(pacchetto, numero, righe, conti, chiuso,
-                                    risposta),
+                                    pagine, esistevano),
                 None)
 
+    @staticmethod
+    def _quota_esaurita(risposta):
+        """Il 403 della quota oraria, che e' «riprova», non un verdetto.
+
+        ⚠️ MISURATO il 2026-09-02, e non documentato: dopo circa 600
+        chiamate in pochi minuti Octopia risponde 403 con `{"statusCode":
+        403, "message": "Out of call volume quota. Quota will be replenished
+        in 00:11:35."}`. Non e' un rapporto illeggibile e non e' un rifiuto
+        del pacchetto: e' la stessa cosa di una rete caduta, e si tratta
+        cosi'. Un 403 che NON parla di quota resta quel che e' — un rifiuto
+        certo, che il ramo «illeggibile» scrive per intero.
+        """
+        try:
+            stato = int(risposta.stato)
+        except (TypeError, ValueError):
+            return None
+        if stato != 403:
+            return None
+        messaggio = (risposta.messaggio or "").strip()
+        if "quota" not in messaggio.lower():
+            return None
+        return _("la quota oraria di chiamate a Cdiscount e' esaurita: %s"
+                 ) % messaggio
+
     def _riga_rapporto(self, pacchetto, numero, righe, conti, chiuso,
-                       risposta):
+                       pagine, esistevano):
         """La riga di registro di un pacchetto letto: `(esito, messaggio)`.
 
         ⚠️ **Verde solo se non manca niente, non avanza niente e nessuna
@@ -2514,15 +1955,36 @@ class CdiscountConnector(MarketplaceConnector):
         # Chiamarlo cosi' faceva contraddire il messaggio con se stesso: «il
         # rapporto ne ha nominate 1» seguito da «NON NOMINA NEMMENO UNA».
         voci = (conti["confermati"] + conti["rifiutati"]
-                + len(conti["estranee"]))
+                + len(conti["estranee"]) + len(conti["attese"]))
+        # ⚠️ Le mancanti VERE sono quelle che il rapporto non nomina: le
+        # attese le ha nominate, e si dicono a parte.
+        non_nominate = [c for c in conti["mancanti"]
+                        if c not in set(conti["attese"])]
+        if pagine == 1:
+            in_pagine = _("in 1 pagina")
+        else:
+            in_pagine = _("in %s pagine") % pagine
         pezzi = [_(
             "Pacchetto %(numero)s: partite %(partite)s schede, il rapporto ha "
-            "portato %(voci)s voci — confermate %(confermate)s, rifiutate "
-            "%(rifiutate)s, senza verdetto %(mancanti)s.")
+            "portato %(voci)s voci %(pagine)s — confermate %(confermate)s, "
+            "rifiutate %(rifiutate)s, senza verdetto %(mancanti)s.")
             % {"numero": numero, "partite": partite, "voci": voci,
+               "pagine": in_pagine,
                "confermate": conti["confermati"],
                "rifiutate": conti["rifiutati"],
-               "mancanti": len(conti["mancanti"])}]
+               "mancanti": len(non_nominate)}]
+        if esistevano:
+            pezzi.append(_(
+                "Di quelle confermate, esistevano gia' %s sul catalogo di "
+                "Cdiscount (la scheda e' stata arricchita o era identica): "
+                "lo dice la colonna «Su Cdiscount».") % esistevano)
+        if conti["attese"]:
+            pezzi.append(_(
+                "⚠️ Cdiscount sta ancora integrando %(quante)s schede "
+                "validate: %(elenco)s. Restano «in attesa» e il pacchetto "
+                "resta aperto; si ripassa.")
+                % {"quante": len(conti["attese"]),
+                   "elenco": _elenco_corto(conti["attese"])})
         if len(righe) != partite:
             pezzi.append(_(
                 "⚠️ In Odoo le righe di questo pacchetto sono %(righe)s ma i "
@@ -2542,22 +2004,19 @@ class CdiscountConnector(MarketplaceConnector):
                 "⚠️ In Odoo questo pacchetto non ha nessuna scheda "
                 "collegata: l'esito e' stato letto e non si e' potuto "
                 "attribuire a nessuno."))
-        if conti["mancanti"]:
+        if non_nominate:
             pezzi.append(_(
                 "⚠️ Il rapporto NON nomina %(quante)s schede che erano "
                 "partite: %(elenco)s. Restano «in attesa» e il pacchetto "
                 "resta aperto — si riprova al giro dopo, e se l'esito non "
                 "arriva scade il %(scade)s.")
-                % {"quante": len(conti["mancanti"]),
-                   "elenco": _elenco_corto(conti["mancanti"]),
+                % {"quante": len(non_nominate),
+                   "elenco": _elenco_corto(non_nominate),
                    "scade": self._ora_locale(pacchetto.scade_il)})
-            # ⚠️ IL SOSPETTO DELLA PAGINAZIONE, e solo qui: un rapporto
-            # completo non ha niente da sospettare. Non cambia nessuna
-            # decisione — il pacchetto resta aperto comunque — ma separa le
-            # due diagnosi che oggi producono la stessa riga: «Cdiscount non
-            # ha detto niente di queste schede» e «le ha dette in una pagina
-            # che non abbiamo chiesto». Vedi `CHIAVI_PAGINAZIONE`.
-            if not (conti["confermati"] or conti["rifiutati"]):
+            # ⚠️ E LA DIAGNOSI DEL RAPPORTO MUTO, solo se non ha nominato
+            # NESSUNA delle nostre — nemmeno come attesa.
+            if not (conti["confermati"] or conti["rifiutati"]
+                    or conti["attese"]):
                 # ⚠️ ED E' UNA DIAGNOSI DIVERSA, non un parziale piu' grande.
                 # Un rapporto che nomina ALCUNE delle nostre e' una notizia su
                 # questo pacchetto; uno che non ne nomina NESSUNA e' una
@@ -2567,8 +2026,9 @@ class CdiscountConnector(MarketplaceConnector):
                     "⚠️⚠️ IL RAPPORTO NON NOMINA NEMMENO UNA delle schede "
                     "partite, ed e' arrivato COMPLETO: non e' un rapporto a "
                     "meta'. Il riferimento con cui riconosciamo una scheda si "
-                    "cerca sotto «%(chiavi)s», due nomi presi dalla "
-                    "documentazione e mai visti sul vero. Ne e' aperta "
+                    "cerca sotto «%(chiavi)s»: il primo e' il nome "
+                    "misurato sul vero il 2026-09-02, il secondo quello "
+                    "della prima documentazione. Ne e' aperta "
                     "un'attivita' a una persona; se non fosse partita, la "
                     "riga finale del giro lo dice.") % {
                         "chiavi": "», «".join(CHIAVI_CODICE)})
@@ -2599,13 +2059,6 @@ class CdiscountConnector(MarketplaceConnector):
                         "sospetto che Cdiscount usi un TERZO nome per quel "
                         "campo. Se e' cosi', ogni pacchetto tornera' come "
                         "questo e nessuna scheda avra' mai un verdetto."))
-            pagine = _chiavi_di_paginazione(risposta)
-            if pagine:
-                pezzi.append(_(
-                    "⚠️ Il corpo del rapporto porta %(chiavi)s: potrebbe "
-                    "essere A PAGINE e non incompleto, e questo modulo ne "
-                    "legge una sola. Va guardato prima di dare per perse le "
-                    "schede qui sopra.") % {"chiavi": ", ".join(pagine)})
         if conti["estranee"]:
             pezzi.append(_(
                 "⚠️ Il rapporto nomina %(quante)s codici che in questo "
@@ -2691,8 +2144,11 @@ class CdiscountConnector(MarketplaceConnector):
                        "rimasti": esito["rimasti"]},
                     _("Schede confermate: %s.") % esito["confermate"],
                     _("Rifiutate da Cdiscount: %s.") % esito["rifiutate"],
-                    _("Partite e mai nominate dal rapporto: %s.")
-                    % esito["mancanti"],
+                    _("Partite e mai nominate dal rapporto: %(mancanti)s, di "
+                      "cui validate da Cdiscount e in corso di integrazione "
+                      "%(attese)s.")
+                    % {"mancanti": esito["mancanti"],
+                       "attese": esito.get("attese", 0)},
                     _("Voci estranee nei rapporti: %s.") % esito["estranee"],
                     _("Pacchetti ancora in lavorazione: %(attesa)s, non "
                       "raggiungibili %(incerti)s, illeggibili "
@@ -2731,22 +2187,1261 @@ class CdiscountConnector(MarketplaceConnector):
             esito["chiusura_fallita"] = 1
         return esito
 
+    # ==================================================================
+    # IL RIAGGANCIO — cosa esiste GIA' su Cdiscount
+    #
+    # Vedi docs/superpowers/plans/2026-09-02-cdiscount-solo-offerte.md e
+    # docs/cdiscount-misurato-portale-2026-09-02.md §8.
+    # ==================================================================
+    def riaggancia(self):
+        """Legge i prodotti gia' su Cdiscount e li accoppia ai nostri per SKU.
+
+        ⚠️ **NON scrive niente su Cdiscount.** E' il gemello di
+        `kaufland.riaggancia`, e nasce dalla stessa lezione: «creare offerte
+        prima di sapere quali esistono significa duplicarle su un marketplace
+        vero».
+
+        ⚠️ Perche' serve QUI. Il catalogo Octopia e' condiviso, una scheda per
+        GTIN, e le schede si creano dal portale — non da questo modulo. Il
+        primo caricamento vero (2026-09-02) l'ha detto in due modi: **76
+        prodotti su 176 erano gia' vendibili** senza che avessimo mandato
+        niente, e 88 righe sono tornate con «non sei il creatore della
+        scheda». Senza riaggancio il modulo non sa cosa esiste, e
+        `_assicura_offerte` non avrebbe da cosa nascere.
+
+        ⚠️ **Ogni riga letta finisce in UN secchio, e i secchi sommano a
+        `lette`.** Una riga che non finisce da nessuna parte e' una riga di
+        cui non sappiamo dire niente, e su un «non lo so» non si aggancia. Se
+        Octopia rinominasse `sellerProductReference`, cadrebbero tutte negli
+        scarti: il conto tornerebbe, ma `agganciate: 0` su `lette: 900` e' una
+        notizia che si legge a colpo d'occhio.
+
+        Rende `{"lette", "agganciate", "senza_prodotto", "non_vendibili",
+        "contese", "scartate", "senza"}`.
+        """
+        self._gettone()
+        client = self._client()
+        Scheda = self.env["cdiscount.scheda"].sudo()
+        Prodotto = self.env["product.product"].sudo()
+        azienda = self.channel.company_id
+        # ⚠️ Il nostro codice venditore serve a scegliere la riga giusta
+        # dentro `sellers[]`: il catalogo e' condiviso e su una scheda ci sono
+        # anche gli altri. Senza, si aggancerebbe il codice interno di un
+        # concorrente al nostro prodotto.
+        venditore = _testo(self.channel.sudo().cdiscount_seller_id)
+        adesso = fields.Datetime.now()
+        esito = {"lette": 0, "agganciate": 0, "senza_prodotto": 0,
+                 "non_vendibili": 0, "contese": 0, "scartate": 0}
+        senza = []
+        contese_dette = []
+
+        # ⚠️ Il savepoint rende locale l'intenzione «meglio niente che meta'»:
+        # meta' riaggancio e' peggio di nessuno, perche' le offerte
+        # nascerebbero da una fotografia parziale del catalogo.
+        with self.env.cr.savepoint():
+            for pagina in pagine_prodotti(client):
+                for riga in pagina:
+                    esito["lette"] += 1
+                    codice, riferimento, vendibile, gtin = leggi_prodotto(
+                        riga, venditore)
+                    if not codice and not gtin:
+                        # Senza né il nostro codice né il GTIN non c'e' niente
+                        # a cui agganciarsi.
+                        esito["scartate"] += 1
+                        continue
+                    if not vendibile:
+                        esito["non_vendibili"] += 1
+                        continue
+                    # ⚠️ Il dominio azienda: in `sudo()` la ricerca vede anche
+                    # i prodotti delle altre aziende, e un `default_code`
+                    # omonimo finirebbe agganciato al canale sbagliato.
+                    #
+                    # ⚠️ E il controllo si RIFÀ dopo, sul record trovato: il
+                    # dominio da solo non e' bastato (prove del 2026-09-02
+                    # sera). `company_id` su `product.product` e' un related
+                    # del template, e un related puo' comportarsi diversamente
+                    # in ricerca a seconda di come e' dichiarato. Qui il
+                    # prezzo di una cintura in piu' e' nullo; il prezzo di un
+                    # prodotto agganciato al canale sbagliato e' un'offerta
+                    # pubblicata sul prodotto di un'altra azienda.
+                    prodotto = Prodotto.browse()
+                    if codice:
+                        prodotto = Prodotto.search(
+                            [("default_code", "=", codice),
+                             ("company_id", "in", [False, azienda.id])],
+                            limit=1)
+                    # ⚠️ Il RIPIEGO SUL GTIN, e non e' un lusso: per i
+                    # prodotti creati da ALTRI venditori la documentazione
+                    # avverte che «some fields will not be displayed» e
+                    # `sellers[]` puo' mancare — cioe' il nostro codice non
+                    # c'e'. Il GTIN invece c'e' sempre, e in Odoo e' il codice
+                    # a barre. Senza questo ripiego i prodotti gia' vendibili
+                    # — 76 su 176 al primo caricamento, la maggioranza —
+                    # resterebbero irraggiungibili.
+                    if not prodotto and gtin:
+                        prodotto = Prodotto.search(
+                            [("barcode", "=", gtin),
+                             ("company_id", "in", [False, azienda.id])],
+                            limit=1)
+                        if prodotto and not codice:
+                            codice = _testo(prodotto.default_code)
+                    if prodotto and prodotto.company_id \
+                            and prodotto.company_id != azienda:
+                        prodotto = Prodotto.browse()
+                    # Un prodotto trovato per GTIN ma senza riferimento
+                    # interno in Odoo non ha una chiave con cui vivere: e'
+                    # l'offerta che ha bisogno del codice, non il riaggancio.
+                    if prodotto and not codice:
+                        esito["scartate"] += 1
+                        continue
+                    if not prodotto:
+                        # Roba in vendita su Cdiscount che in Odoo non
+                        # esiste: e' una notizia, non un dettaglio.
+                        esito["senza_prodotto"] += 1
+                        if len(senza) < MAX_CODICI_NEL_MESSAGGIO:
+                            senza.append(codice)
+                        continue
+                    scheda = Scheda.search(
+                        [("channel_id", "=", self.channel.id),
+                         ("codice", "=", codice)], limit=1)
+                    # ⚠️ La contesa si DICE e non si risolve a caso: due
+                    # codici diversi che puntano allo stesso prodotto sono un
+                    # dato sbagliato da qualche parte, e sceglierne uno
+                    # nasconderebbe il problema invece di mostrarlo. E'
+                    # anche cio' che evita di far arrivare dal DATABASE il
+                    # vincolo unico, che in Odoo annulla l'INTERA transazione:
+                    # si perderebbero anche le righe gia' agganciate bene.
+                    altra = Scheda.search(
+                        [("channel_id", "=", self.channel.id),
+                         ("product_id", "=", prodotto.id),
+                         ("codice", "!=", codice)], limit=1)
+                    if altra:
+                        esito["contese"] += 1
+                        if len(contese_dette) < MAX_CODICI_NEL_MESSAGGIO:
+                            contese_dette.append(
+                                "%s/%s" % (codice, altra.codice))
+                        continue
+                    valori = {"product_id": prodotto.id,
+                              "riferimento_octopia": riferimento,
+                              "vendibile": True,
+                              "stato": RIUSCITO,
+                              "agganciata_il": adesso}
+                    if scheda:
+                        scheda.write(valori)
+                    else:
+                        valori.update({"channel_id": self.channel.id,
+                                       "codice": codice})
+                        Scheda.create(valori)
+                    esito["agganciate"] += 1
+
+        if not secchi_tornano(esito):
+            raise UserError(_(
+                "Il riaggancio ha letto %(lette)s righe ma ne ha classificate "
+                "%(somma)s: c'e' almeno una riga di cui non sa dire niente. "
+                "Non si aggancia su una lettura che non torna.")
+                % {"lette": esito["lette"],
+                   "somma": (esito["agganciate"] + esito["senza_prodotto"]
+                             + esito["non_vendibili"] + esito["contese"]
+                             + esito["scartate"])})
+        esito["senza"] = senza
+        esito["contese_dette"] = contese_dette
+        # ⚠️ «error» e non «warning»: `centrivo.job.log.result` e' una
+        # Selection con TRE voci — success, error, skip — e «warning» non
+        # esiste. Un valore fuori elenco solleva, cioe' un riaggancio andato
+        # bene fallirebbe nel momento in cui prova a raccontarlo.
+        #
+        # ⚠️ E un riaggancio che non aggancia NIENTE e' rosso, non giallo: e'
+        # il modo in cui questo giro puo' mentire, e va guardato.
+        self._registra(
+            "cdiscount_riaggancio",
+            "success" if esito["agganciate"] else "error",
+            _("Riaggancio: lette %(lette)s, agganciate %(agganciate)s, "
+              "senza prodotto %(senza)s, non vendibili %(nonvend)s, "
+              "contese %(contese)s, scartate %(scartate)s.")
+            % {"lette": esito["lette"], "agganciate": esito["agganciate"],
+               "senza": esito["senza_prodotto"],
+               "nonvend": esito["non_vendibili"],
+               "contese": esito["contese"], "scartate": esito["scartate"]})
+        return esito
+
+    # ==================================================================
+    # CONSEGNA 2 — LE OFFERTE (prezzo, giacenza, éco-participation)
+    #
+    # Vedi docs/cdiscount-offerte-consegna-2.md. Il ciclo e' a quattro
+    # chiamate (LETTO): nasce il pacchetto, si caricano le offerte a lotti
+    # da 100, lo si manda in lavorazione, e il raccoglitore ne legge l'esito.
+    # I modi di consegna sono MISURATI, tutto cio' che scrive no.
+    # ==================================================================
+    def _modo_consegna_verificato(self, client, codice):
+        """Il modo di consegna del canale, LETTO da Cdiscount prima di
+        scrivere. Rende il dizionario del modo (con la bandiera dei 30 kg).
+
+        ⚠️ MISURATO il 2026-09-02: `GET /sellers/delivery-modes` risponde
+        `{"count", "items": [{"code", "name", "more_than30_kg_product",
+        …}]}` e sul nostro account i codici sono `TRK` e `REG` — NON i
+        `THD/EHD/SHD` della documentazione. Un codice che l'account non ha e'
+        un rifiuto garantito, e si scopre tre giorni dopo: qui si ferma
+        prima. Tutto cio' che non e' «letto e presente» ferma l'invio.
+        """
+        canale = self.channel.display_name
+        risposta = client.chiama("GET", API_MODI_CONSEGNA)
+        incerta = (self._causa_incerta(risposta)
+                   or self._quota_esaurita(risposta))
+        if incerta:
+            raise UserError(_(
+                "I modi di consegna del canale «%(canale)s» non si e' "
+                "potuto leggere da Cdiscount: %(perche)s. Senza, non parte "
+                "nessuna offerta. Riprova fra poco.")
+                % {"canale": canale, "perche": incerta})
+        if not risposta.ok:
+            raise UserError(_(
+                "I modi di consegna del canale «%(canale)s» non si e' "
+                "potuto leggere: Cdiscount ha risposto %(motivo)s.")
+                % {"canale": canale,
+                   "motivo": self._motivo_stato(risposta.stato,
+                                                risposta.messaggio)})
+        elenco = risposta.dati if isinstance(risposta.dati, list) else []
+        modo = modo_consegna(elenco, codice)
+        if modo is None:
+            raise UserError(_(
+                "Il modo di consegna «%(codice)s» del canale «%(canale)s» "
+                "non esiste sull'account Cdiscount, che ne ha questi: "
+                "%(disponibili)s. Con un codice che l'account non ha, ogni "
+                "offerta verrebbe rifiutata. Va scelto uno di quelli.")
+                % {"codice": codice, "canale": canale,
+                   "disponibili": ", ".join(
+                       "%s (%s)" % (_testo(m.get("code")),
+                                    _testo(m.get("name")))
+                       for m in elenco if isinstance(m, dict)) or "nessuno"})
+        return modo
+
+    def _assicura_offerte(self, Offerta, Scheda):
+        """Una riga di offerta per ogni scheda riuscita con un prodotto.
+
+        ⚠️ Le righe nascono qui, non da un file: l'offerta e' la conseguenza
+        della scheda. Una scheda che smette di essere riuscita NON cancella
+        la riga: e' cosi' che il ritiro sa cosa ritirare.
+        """
+        riuscite = Scheda.search([("channel_id", "=", self.channel.id),
+                                  ("stato", "=", RIUSCITO),
+                                  ("product_id", "!=", False)])
+        esistenti = {_testo(o.codice): o for o in Offerta.search(
+            [("channel_id", "=", self.channel.id)])}
+        nuove = []
+        for scheda in riuscite:
+            codice = _testo(scheda.codice)
+            if not codice:
+                continue
+            riga = esistenti.get(codice)
+            if riga is None:
+                nuove.append({"channel_id": self.channel.id,
+                              "codice": codice, "scheda_id": scheda.id,
+                              "product_id": scheda.product_id.id})
+            elif riga.scheda_id != scheda or riga.product_id != scheda.product_id:
+                riga.write({"scheda_id": scheda.id,
+                            "product_id": scheda.product_id.id})
+        if nuove:
+            Offerta.create(nuove)
+
+    def _salta_offerta(self, riga, motivo, esito, motivi):
+        esito["saltate"] += 1
+        motivi.append("%s: %s" % (_testo(riga.codice), motivo))
+        self._al_riparo(riga.write, {"motivo": motivo})
+
+    def _cambi_offerte(self, candidate, listino, modo, esito, motivi, tetto):
+        """Cosa parte, riga per riga: `[(riga, corpo, valori)]`.
+
+        Ogni riga finisce in UNO di questi esiti: un cambio da mandare,
+        «invariata», o «saltata» col suo motivo — una riga che non finisce
+        da nessuna parte e' una riga di cui non sappiamo dire niente.
+        """
+        canale = self.channel.sudo()
+        cambi = []
+        troncato = False
+        for riga in candidate:
+            if len(cambi) >= tetto:
+                troncato = True
+                break
+            scheda = riga.scheda_id
+            prodotto = riga.product_id
+            viva = bool(scheda and _testo(scheda.stato) == RIUSCITO
+                        and prodotto and prodotto.active)
+            if not viva:
+                # ⚠️ IL RITIRO: quantita' zero, una volta sola, su cio' che
+                # era stato mandato. Una riga mai mandata o gia' ritirata
+                # non ha niente da ritirare.
+                if _testo(riga.stato) == RITIRATA or not riga.mandata_il:
+                    esito["invariate"] += 1
+                    continue
+                if not prodotto or not riga.ultimo_prezzo:
+                    self._salta_offerta(riga, _(
+                        "da ritirare (la scheda non e' piu' riuscita), ma "
+                        "senza prodotto o senza un prezzo gia' mandato non "
+                        "si compone un ritiro: va guardata a mano sul "
+                        "portale."), esito, motivi)
+                    continue
+                valori = {"prezzo": riga.ultimo_prezzo, "quantita": 0,
+                          "ecotax": riga.ultima_ecotax, "ritiro": True}
+            else:
+                prezzo = self._pricelist_price(listino, prodotto)
+                try:
+                    quantita = int(self._available_quantity(prodotto,
+                                                            canale) or 0)
+                except Exception as errore:  # noqa: BLE001
+                    self._salta_offerta(riga, _(
+                        "giacenza non leggibile (%s).") % errore, esito,
+                        motivi)
+                    continue
+                ecotax = prodotto.cdiscount_ecotax or 0.0
+                if canale.cdiscount_ecotax_obbligatoria and not ecotax > 0:
+                    self._salta_offerta(riga, _(
+                        "manca l'éco-participation Cdiscount sul prodotto, "
+                        "e il canale la pretende. Va compilata sul prodotto "
+                        "(«Éco-participation Cdiscount»), o si spegne "
+                        "«Pretendi l'éco-participation» sul canale."),
+                        esito, motivi)
+                    continue
+                peso = prodotto.weight or 0.0
+                if peso > SOGLIA_KG and not regge_oltre_30kg(modo):
+                    self._salta_offerta(riga, _(
+                        "pesa %(peso)s kg, oltre i %(soglia)s, e il modo di "
+                        "consegna «%(modo)s» non regge i colli oltre i 30 "
+                        "kg: finche' l'account non ha un modo «Big parcel», "
+                        "questo prodotto non si puo' vendere.")
+                        % {"peso": peso, "soglia": SOGLIA_KG,
+                           "modo": _testo(modo.get("code"))}, esito, motivi)
+                    continue
+                valori = {"prezzo": prezzo, "quantita": max(quantita, 0),
+                          "ecotax": ecotax, "ritiro": False}
+            try:
+                corpo = corpo_offerta(
+                    codice=riga.codice, gtin=prodotto.barcode,
+                    prezzo=valori["prezzo"], iva=canale.cdiscount_iva,
+                    ecotax=valori["ecotax"], quantita=valori["quantita"],
+                    modo=_testo(modo.get("code")),
+                    costo=canale.cdiscount_spedizione_costo,
+                    costo_aggiuntivo=canale.cdiscount_spedizione_costo_aggiuntivo,
+                    giorni_preparazione=canale.processing_time_default)
+            except ValueError as errore:
+                self._salta_offerta(riga, str(errore), esito, motivi)
+                continue
+            # ⚠️ Cosa si rimanda: mai mandata, oppure valori diversi dagli
+            # ultimi mandati. Una rifiutata con gli STESSI valori NON si
+            # ripete a ogni giro: Cdiscount ha gia' detto di no.
+            invariata = (bool(riga.mandata_il)
+                         and _testo(riga.stato) in (RIUSCITO, RIFIUTATO,
+                                                    RITIRATA)
+                         and corpo["price"]["price"] == round(
+                             riga.ultimo_prezzo or 0, 2)
+                         and corpo["quantity"] == (riga.ultima_quantita or 0)
+                         and corpo["price"]["taxes"][1]["value"] == round(
+                             riga.ultima_ecotax or 0, 2)
+                         and bool(riga.ritiro) == valori["ritiro"])
+            if invariata:
+                esito["invariate"] += 1
+                continue
+            valori["prezzo"] = corpo["price"]["price"]
+            valori["quantita"] = corpo["quantity"]
+            valori["ecotax"] = corpo["price"]["taxes"][1]["value"]
+            cambi.append((riga, corpo, valori))
+        return cambi, troncato
+
+    def allinea_offerte(self, limite=None):
+        """Manda a Cdiscount le offerte cambiate, in UN pacchetto `Upsert`.
+
+        `limite` conta le OFFERTE e serve alla prima prova sul vero: si parte
+        da una sola, si guarda sul portale, e solo dopo si manda il resto.
+
+        L'ordine, e non e' negoziabile:
+
+        1. il turno; le guardie (credenziali, canale di vendita, listino,
+           modo di consegna); il gettone; **il modo di consegna letto da
+           Cdiscount**;
+        2. le righe: una per scheda riuscita, poi i cambi (riga per riga:
+           un cambio, «invariata», o «saltata» col motivo);
+        3. `POST /offer-packages` → il numero (dal `Content-Location`), che
+           si scrive SUBITO;
+        4. i lotti da 100: un lotto rifiutato segna le sue righe e continua,
+           un lotto incerto segna le righe «in attesa» e smette di caricare;
+        5. `PATCH Ready`: se fallisce, il pacchetto resta scritto con
+           `pronto = False` e il raccoglitore ritenta.
+        """
+        self._prendi_il_turno(_("allineamento delle offerte"))
+        canale = self.channel.sudo()
+        self._canale_vendita()
+        listino = canale.pricelist_selling_id
+        if not listino:
+            raise UserError(_(
+                "Sul canale «%s» manca il listino («Listino prezzo pieno»): "
+                "senza, non c'e' nessun prezzo da mandare a Cdiscount.")
+                % self.channel.display_name)
+        codice_modo = _testo(canale.cdiscount_modo_consegna)
+        if not codice_modo:
+            raise UserError(_(
+                "Sul canale «%s» manca il modo di consegna: Cdiscount rifiuta "
+                "le offerte senza. Sul nostro account sono TRK (Envoi Suivi) "
+                "e REG (Recommandé).") % self.channel.display_name)
+        client = self._client()
+        self._gettone()
+        modo = self._modo_consegna_verificato(client, codice_modo)
+
+        Offerta = self.env["cdiscount.offerta"].sudo()
+        Scheda = self.env["cdiscount.scheda"].sudo()
+        self._assicura_offerte(Offerta, Scheda)
+        esito = {"mandate": 0, "ritiri": 0, "pacchetti": 0, "saltate": 0,
+                 "invariate": 0, "rifiutate": 0, "incerte": 0,
+                 "non_partite": 0, "rimaste": 0, "modo": codice_modo}
+        motivi = []
+        fermata = None
+        tetto = min(limite, MAX_OFFERTE_PER_GIRO) if limite else MAX_OFFERTE_PER_GIRO
+        candidate = Offerta.search([("channel_id", "=", self.channel.id),
+                                    ("stato", "!=", IN_ATTESA)], order="id")
+        cambi, troncato = self._cambi_offerte(candidate, listino, modo,
+                                              esito, motivi, tetto)
+        if troncato and not limite:
+            fermata = _("Il giro si e' fermato al tetto di %s offerte per "
+                        "volta. Ripetere per continuare.") % MAX_OFFERTE_PER_GIRO
+        if not cambi:
+            return self._chiudi_allineamento(esito, motivi, fermata)
+
+        # 3) Nasce il pacchetto. Finche' non ci si carica niente, non c'e'
+        #    niente a rischio: un pacchetto vuoto scade da solo in sei ore.
+        risposta = client.chiama("POST", API_OFFER_PACKAGES,
+                                 {"packageType": "Upsert"})
+        if getattr(risposta, "prevolo", False):
+            esito["non_partite"] += len(cambi)
+            fermata = _("Il giro si e' fermato PRIMA di chiamare Cdiscount: "
+                        "%s. Non e' partito niente.") % risposta.messaggio
+            return self._chiudi_allineamento(esito, motivi, fermata)
+        incerta = (self._causa_incerta(risposta)
+                   or self._quota_esaurita(risposta))
+        if incerta or not risposta.ok:
+            esito["non_partite"] += len(cambi)
+            fermata = _("Il pacchetto di offerte non e' nato: %s. Non e' "
+                        "partito niente, si ripete piu' tardi.") % (
+                incerta or self._motivo_stato(risposta.stato,
+                                              risposta.messaggio))
+            self._al_riparo(self._registra, OPERAZIONE_ALLINEA, "error",
+                            fermata)
+            return self._chiudi_allineamento(esito, motivi, fermata)
+        numero = numero_pacchetto_offerte(risposta.teste, risposta.corpo)
+        if not numero:
+            esito["non_partite"] += len(cambi)
+            fermata = _("Cdiscount ha creato un pacchetto di offerte ma la "
+                        "risposta non porta nessun numero (%s). Non ci si "
+                        "e' caricato niente: si ripete piu' tardi.") % (
+                (risposta.testo or str(risposta.teste))[:300])
+            self._al_riparo(self._registra, OPERAZIONE_ALLINEA, "error",
+                            fermata)
+            return self._chiudi_allineamento(esito, motivi, fermata)
+        adesso = fields.Datetime.to_datetime(fields.Datetime.now())
+        scade = adesso + timedelta(days=GIORNI_ESITO)
+        scritto = self._al_riparo(self._crea_pacchetto, numero, adesso,
+                                  scade, TIPO_OFFERTE, False)
+        pacchetto = self._pacchetto_scritto(numero) if scritto else None
+        if not pacchetto:
+            esito["non_partite"] += len(cambi)
+            fermata = _("Il pacchetto di offerte %s e' nato su Cdiscount ma "
+                        "il suo numero non si e' potuto scrivere in Odoo. "
+                        "Non ci si e' caricato niente: scadra' da solo. Si "
+                        "ripete piu' tardi.") % numero
+            self._al_riparo(self._registra, OPERAZIONE_ALLINEA, "error",
+                            fermata, None, numero)
+            return self._chiudi_allineamento(esito, motivi, fermata)
+        esito["pacchetti"] = 1
+
+        # 4) I lotti.
+        try:
+            gruppi = lotti([corpo for _r, corpo, _v in cambi])
+        except ValueError as errore:
+            esito["non_partite"] += len(cambi)
+            fermata = str(errore)
+            return self._chiudi_allineamento(esito, motivi, fermata)
+        indice = 0
+        caricate = 0
+        percorso_pacchetto = "%s/%s" % (API_OFFER_PACKAGES, quote(numero, safe=""))
+        for gruppo in gruppi:
+            pezzo = cambi[indice:indice + len(gruppo)]
+            indice += len(gruppo)
+            righe = Offerta.browse([r.id for r, _c, _v in pezzo])
+            risposta = client.chiama("POST", "%s/offer-requests"
+                                     % percorso_pacchetto, gruppo)
+            if getattr(risposta, "prevolo", False):
+                esito["non_partite"] += len(pezzo)
+                fermata = _("Un lotto non e' partito (guasto dal nostro "
+                            "lato): %s.") % risposta.messaggio
+                break
+            incerta = (self._causa_incerta(risposta)
+                       or self._quota_esaurita(risposta))
+            if incerta:
+                # ⚠️ Cdiscount puo' averlo preso: le righe passano in attesa
+                # col pacchetto, e l'esito dira'. Non si carica altro.
+                esito["incerte"] += len(pezzo)
+                self._segna_mandate(pezzo, pacchetto, adesso)
+                caricate += len(pezzo)
+                fermata = _("Esito IGNOTO su un lotto di %(quante)s offerte: "
+                            "%(perche)s. Restano «in attesa» e il "
+                            "raccoglitore leggera' l'esito del pacchetto.") % {
+                    "quante": len(pezzo), "perche": incerta}
+                break
+            if not risposta.ok:
+                motivo = self._motivo_stato(risposta.stato, risposta.messaggio)
+                esito["rifiutate"] += len(pezzo)
+                motivi.append(_("lotto di %(quante)s offerte rifiutato: "
+                                "%(motivo)s") % {"quante": len(pezzo),
+                                                 "motivo": motivo})
+                self._al_riparo(righe.write, {
+                    "stato": RIFIUTATO, "controllato_il": adesso,
+                    "motivo": _("Cdiscount ha rifiutato il LOTTO intero in "
+                                "cui questa offerta era: %s") % motivo})
+                continue
+            self._segna_mandate(pezzo, pacchetto, adesso)
+            caricate += len(pezzo)
+            esito["mandate"] += len(pezzo)
+            esito["ritiri"] += sum(1 for _r, _c, v in pezzo if v["ritiro"])
+
+        # 5) In lavorazione.
+        if caricate:
+            risposta = client.chiama("PATCH", percorso_pacchetto,
+                                     {"state": "Ready"})
+            if risposta.ok:
+                self._al_riparo(pacchetto.write, {"pronto": True})
+            else:
+                perche = (self._causa_incerta(risposta)
+                          or self._quota_esaurita(risposta)
+                          or self._motivo_stato(risposta.stato,
+                                                risposta.messaggio))
+                fermata = _("Il pacchetto %(numero)s e' caricato ma NON e' "
+                            "stato mandato in lavorazione (%(perche)s): il "
+                            "raccoglitore ritentera'. ⚠️ Cdiscount lo "
+                            "aspetta entro sei ore.") % {"numero": numero,
+                                                          "perche": perche}
+        return self._chiudi_allineamento(esito, motivi, fermata)
+
+    def _segna_mandate(self, pezzo, pacchetto, adesso):
+        """Le righe di un lotto partito: in attesa, col pacchetto e la
+        memoria di cio' che e' partito."""
+        for riga, _corpo, valori in pezzo:
+            self._al_riparo(riga.write, {
+                "stato": IN_ATTESA, "pacchetto_id": pacchetto.id,
+                "ultimo_prezzo": valori["prezzo"],
+                "ultima_quantita": valori["quantita"],
+                "ultima_ecotax": valori["ecotax"],
+                "ritiro": valori["ritiro"], "mandata_il": adesso,
+                "motivo": False})
+
+    def _chiudi_allineamento(self, esito, motivi, fermata):
+        """Tira le somme dell'allineamento e lascia una riga nel registro."""
+        esito["fermata"] = fermata or False
+        try:
+            with self.env.cr.savepoint():
+                Offerta = self.env["cdiscount.offerta"].sudo()
+                esito["rimaste"] = Offerta.search_count(
+                    [("channel_id", "=", self.channel.id),
+                     ("stato", "=", DA_MANDARE)])
+                verde = not (esito["saltate"] or esito["rifiutate"]
+                             or esito["incerte"] or esito["non_partite"]
+                             or fermata)
+                pezzi = [_(
+                    "Mandate %(mandate)s offerte (di cui %(ritiri)s ritiri) "
+                    "in %(pacchetti)s pacchetti, modo di consegna %(modo)s. "
+                    "Invariate %(invariate)s, saltate %(saltate)s, in lotti "
+                    "rifiutati %(rifiutate)s, di esito ignoto %(incerte)s, "
+                    "non partite %(non_partite)s. Mai mandate finora: "
+                    "%(rimaste)s.") % esito]
+                if fermata:
+                    pezzi.append(fermata)
+                for motivo in motivi[:MAX_MOTIVI_NEL_REGISTRO]:
+                    pezzi.append(motivo)
+                if len(motivi) > MAX_MOTIVI_NEL_REGISTRO:
+                    pezzi.append(_("… e altri %s motivi: ognuno sta sulla "
+                                   "propria riga, nella pagina «Offerte "
+                                   "Cdiscount».")
+                                 % (len(motivi) - MAX_MOTIVI_NEL_REGISTRO))
+                self._registra(OPERAZIONE_ALLINEA,
+                               "success" if verde else "error",
+                               "\n".join(pezzi))
+        except Exception:  # noqa: BLE001
+            _logger.exception(
+                "Cdiscount sul canale %s: la chiusura dell'allineamento e' "
+                "fallita. Esito grezzo: %s", self.channel.display_name, esito)
+            esito.setdefault("rimaste", 0)
+            esito["chiusura_fallita"] = 1
+        return esito
+
+    def _raccogli_offerte(self, pacchetto, numero, client):
+        """L'esito di UN pacchetto di offerte. Rende `(conti, riga, nota)`.
+
+        Prima il `PATCH Ready` se non e' mai passato, poi lo stato del
+        pacchetto (`GET /offer-packages/{id}`), poi — solo se e' integrato —
+        gli esiti riga per riga, pagina per pagina (cursore nel `Link`), e la
+        stessa `riconcilia` delle schede.
+        """
+        Offerta = self.env["cdiscount.offerta"].sudo()
+        righe = Offerta.search([("pacchetto_id", "=", pacchetto.id)])
+        percorso = "%s/%s" % (API_OFFER_PACKAGES, quote(numero, safe=""))
+
+        def incerto(perche):
+            return ({"incerti": 1}, None, _(
+                "Pacchetto di offerte %(numero)s: l'esito non si e' potuto "
+                "leggere (%(perche)s). Resta aperto e si riprova; scade il "
+                "%(scade)s.") % {"numero": numero, "perche": perche,
+                                 "scade": self._ora_locale(pacchetto.scade_il)})
+
+        if not pacchetto.pronto:
+            risposta = client.chiama("PATCH", percorso, {"state": "Ready"})
+            perche = (self._causa_incerta(risposta)
+                      or self._quota_esaurita(risposta))
+            if perche:
+                return incerto(perche)
+            if not risposta.ok:
+                return ({"illeggibili": 1}, None, _(
+                    "Pacchetto di offerte %(numero)s: Cdiscount non lo "
+                    "accetta in lavorazione (%(motivo)s). Resta aperto; va "
+                    "guardato prima che scada il %(scade)s.") % {
+                        "numero": numero, "scade": self._ora_locale(pacchetto.scade_il),
+                        "motivo": self._motivo_stato(risposta.stato,
+                                                     risposta.messaggio)})
+            pacchetto.write({"pronto": True})
+
+        risposta = client.chiama("GET", percorso)
+        perche = self._causa_incerta(risposta) or self._quota_esaurita(risposta)
+        if perche:
+            return incerto(perche)
+        if not risposta.ok:
+            return ({"illeggibili": 1}, None, _(
+                "Pacchetto di offerte %(numero)s: lo stato non si e' potuto "
+                "leggere (%(motivo)s). Resta aperto; scade il %(scade)s.") % {
+                    "numero": numero, "scade": self._ora_locale(pacchetto.scade_il),
+                    "motivo": self._motivo_stato(risposta.stato,
+                                                 risposta.messaggio)})
+        corpo_pacchetto = risposta.corpo
+        stato = stato_pacchetto(corpo_pacchetto)
+        adesso = fields.Datetime.to_datetime(fields.Datetime.now())
+        if stato == IN_LAVORAZIONE:
+            return ({"in_lavorazione": 1}, None, _(
+                "Pacchetto di offerte %(numero)s: Cdiscount ci sta ancora "
+                "lavorando (%(stato)s). Si ripassa; scade il %(scade)s.") % {
+                    "numero": numero, "scade": self._ora_locale(pacchetto.scade_il),
+                    "stato": _testo((corpo_pacchetto or {}).get("state")
+                                    if isinstance(corpo_pacchetto, dict)
+                                    else "")})
+        if stato == RIFIUTATO_IN_BLOCCO:
+            motivo = motivo_pacchetto(corpo_pacchetto)
+            in_attesa = righe.filtered(lambda r: r.stato == IN_ATTESA)
+            if in_attesa:
+                in_attesa.write({"stato": RIFIUTATO, "controllato_il": adesso,
+                                 "motivo": _("Cdiscount ha rifiutato il "
+                                             "pacchetto INTERO: %s") % motivo})
+            pacchetto.write({"stato": RACCOLTO})
+            return ({"rifiutate": len(in_attesa), "chiusi": 1},
+                    ("error", _("Pacchetto di offerte %(numero)s RIFIUTATO in "
+                                "blocco da Cdiscount: %(motivo)s. Le sue "
+                                "%(quante)s offerte sono rifiutate.") % {
+                        "numero": numero, "motivo": motivo,
+                        "quante": len(in_attesa)}), None)
+        if stato != PRONTO:
+            return ({"illeggibili": 1}, None, _(
+                "Pacchetto di offerte %(numero)s: stato «%(stato)s» che non "
+                "conosciamo. Resta aperto; va guardato prima che scada il "
+                "%(scade)s.") % {"numero": numero, "scade": self._ora_locale(pacchetto.scade_il),
+                                 "stato": (risposta.testo or "")[:200]})
+
+        # Integrato: gli esiti, pagina per pagina.
+        righe_esiti = []
+        pagine = 0
+        prossimo = "%s/offer-requests-results?%s" % (
+            percorso, urlencode({"limit": MAX_PER_LOTTO}))
+        while prossimo:
+            pagine += 1
+            if pagine > MAX_PAGINE_ESITI_OFFERTE:
+                return incerto(_("piu' di %s pagine di esiti")
+                               % MAX_PAGINE_ESITI_OFFERTE)
+            risposta = client.chiama("GET", prossimo)
+            perche = (self._causa_incerta(risposta)
+                      or self._quota_esaurita(risposta))
+            if perche:
+                return incerto(perche)
+            if not risposta.ok or not isinstance(risposta.dati, list):
+                return ({"illeggibili": 1}, None, _(
+                    "Pacchetto di offerte %(numero)s: gli esiti non si sono "
+                    "potuti leggere (%(motivo)s). Resta aperto; scade il "
+                    "%(scade)s.") % {
+                        "numero": numero, "scade": self._ora_locale(pacchetto.scade_il),
+                        "motivo": self._motivo_stato(risposta.stato,
+                                                     risposta.messaggio)
+                        if not risposta.ok else (risposta.testo or "")[:200]})
+            righe_esiti.extend(risposta.dati)
+            cursore = cursore_da_link(risposta.teste)
+            prossimo = ("%s/offer-requests-results?%s" % (
+                percorso, urlencode({"cursor": cursore,
+                                     "limit": MAX_PER_LOTTO}))
+                        if cursore else "")
+        stato_esiti, esiti = leggi_esiti_offerte(righe_esiti)
+        if stato_esiti != PRONTO:
+            return ({"in_lavorazione": 1}, None, _(
+                "Pacchetto di offerte %(numero)s: integrato ma senza esiti "
+                "ancora. Si ripassa; scade il %(scade)s.") % {
+                    "numero": numero, "scade": self._ora_locale(pacchetto.scade_il)})
+        mandati = [_testo(r.codice) for r in righe]
+        conti = riconcilia(mandati, esiti)
+        mancanti = set(conti["mancanti"])
+        vive, ritirate, per_motivo = [], [], {}
+        for riga in righe:
+            codice = _codice(riga.codice)
+            if codice in mancanti:
+                continue
+            verdetto = esiti[codice]
+            if verdetto["esito"] == RIUSCITO:
+                (ritirate if riga.ritiro else vive).append(riga.id)
+            else:
+                per_motivo.setdefault(_testo(verdetto["motivo"]),
+                                      []).append(riga.id)
+        if vive:
+            Offerta.browse(vive).write({"stato": RIUSCITO, "motivo": False,
+                                        "controllato_il": adesso})
+        if ritirate:
+            Offerta.browse(ritirate).write({"stato": RITIRATA, "motivo": False,
+                                            "controllato_il": adesso})
+        for motivo, ids in per_motivo.items():
+            Offerta.browse(ids).write({"stato": RIFIUTATO,
+                                       "motivo": motivo or False,
+                                       "controllato_il": adesso})
+        chiuso = not conti["mancanti"]
+        if chiuso:
+            pacchetto.write({"stato": RACCOLTO})
+        numeri = {"confermate": conti["confermati"],
+                  "rifiutate": conti["rifiutati"],
+                  "mancanti": len(conti["mancanti"]),
+                  "estranee": len(conti["estranee"])}
+        if chiuso:
+            numeri["chiusi"] = 1
+        pezzi = [_("Pacchetto di offerte %(numero)s: partite %(partite)s, "
+                   "vive %(vive)s, ritirate %(ritirate)s, rifiutate "
+                   "%(rifiutate)s, senza verdetto %(mancanti)s, voci estranee "
+                   "%(estranee)s (%(pagine)s pagine di esiti).") % {
+            "numero": numero, "partite": len(mandati), "vive": len(vive),
+            "ritirate": len(ritirate), "rifiutate": conti["rifiutati"],
+            "mancanti": len(conti["mancanti"]),
+            "estranee": len(conti["estranee"]), "pagine": pagine}]
+        if conti["mancanti"]:
+            pezzi.append(_("⚠️ Senza verdetto: %s. Restano in attesa, il "
+                           "pacchetto resta aperto.")
+                         % _elenco_corto(conti["mancanti"]))
+        if conti["estranee"]:
+            pezzi.append(_("⚠️ Voci estranee: %s.")
+                         % _elenco_corto(conti["estranee"]))
+        pulito = not (conti["mancanti"] or conti["estranee"]
+                      or conti["rifiutati"] or not righe)
+        return (numeri, ("success" if pulito else "error", "\n".join(pezzi)),
+                None)
+
     # ------------------------------------------------------------------
     # Il contratto della classe base
     # ------------------------------------------------------------------
+    # ==================================================================
+    # CONSEGNA 3 — GLI ORDINI
+    #
+    # Vedi docs/cdiscount-ordini-contratto.md. Come si chiede e' MISURATO
+    # (paginazione a indice da 100, `status` validato, conteggio nudo), la
+    # forma dell'ordine e' LETTA: il primo ordine vero la confermera'.
+    # ==================================================================
     def pull_orders(self):
-        """Gli ordini sono la Consegna 3: qui non c'e' niente da scaricare.
+        """Scarica gli ordini in preparazione e li importa in Odoo.
 
-        ⚠️ NON solleva `NotImplementedError`, ed e' tutto il punto di questo
-        metodo. `cron_pull_all_channels` (integrations_core) scorre TUTTI i
-        canali attivi e chiama `pull_orders()`: un'eccezione qui diventerebbe
-        una riga `pull_orders / error` nel registro delle operazioni A OGNI
-        PASSAGGIO. Un registro che si riempie di rosso per una cosa che non e'
-        un guasto e' peggio di un registro vuoto: si impara a non leggerlo, e
-        il rosso vero — un pacchetto di esito ignoto — passa in mezzo agli
-        altri senza che nessuno lo veda. Stessa scelta di Kaufland.
+        ⚠️ SOLO gli `InPreparation`: l'indirizzo di consegna esiste solo da
+        li', ed e' l'unico stato in cui si puo' spedire. Prima si CONTANO
+        quelli in attesa di accettazione: l'accettazione automatica e' accesa
+        sul portale (misurato), ma se qualcuno la spegnesse gli ordini si
+        fermerebbero li' in silenzio — e qui lo si dice, senza accettare al
+        posto di nessuno.
+
+        Ogni ordine sta nel suo savepoint: uno che rompe non ferma gli
+        altri. Un elenco interrotto NON e' completo, e si dice: gli ordini
+        letti fin li' si importano lo stesso (ognuno e' idempotente).
         """
-        _logger.info(
-            "Cdiscount sul canale %s: gli ordini sono la Consegna 3, non "
-            "c'e' niente da scaricare.", self.channel.display_name)
+        esito = {"lette": 0, "ordini": 0, "importati": 0, "gia_importati": 0,
+                 "in_errore": 0, "saltati": 0, "in_attesa_accettazione": 0,
+                 "interrotto": 0}
+        note = []
+        canale_vendita = self._canale_vendita()
+        client = self._client()
+        self._gettone()
+
+        risposta = client.chiama("GET", PERCORSO_CONTEGGIO_IN_ATTESA)
+        if risposta.ok and isinstance(risposta.corpo, (int, float)) \
+                and not isinstance(risposta.corpo, bool):
+            if risposta.corpo > 0:
+                esito["in_attesa_accettazione"] = int(risposta.corpo)
+                note.append(_(
+                    "⚠️ %s ordini sono in attesa di ACCETTAZIONE su "
+                    "Cdiscount, e da qui non si accettano: l'accettazione "
+                    "automatica sul portale e' spenta? Finche' restano li', "
+                    "non si possono ne' scaricare ne' spedire.")
+                    % int(risposta.corpo))
+        else:
+            note.append(_(
+                "il conteggio degli ordini in attesa di accettazione non si "
+                "e' potuto leggere (%s).") % (
+                self._causa_incerta(risposta)
+                or self._motivo_stato(risposta.stato, risposta.messaggio)))
+
+        ordini = []
+        pagina = 0
+        while True:
+            pagina += 1
+            if pagina > MAX_PAGINE_ORDINI:
+                esito["interrotto"] = 1
+                note.append(_("lo scarico si e' fermato a %s pagine: sono "
+                              "piu' ordini di quanti abbia senso leggere in "
+                              "un giro.") % MAX_PAGINE_ORDINI)
+                break
+            risposta = client.chiama("GET", percorso_ordini(pagina,
+                                                            canale_vendita))
+            perche = (self._causa_incerta(risposta)
+                      or self._quota_esaurita(risposta))
+            if not perche and not risposta.ok:
+                perche = self._motivo_stato(risposta.stato, risposta.messaggio)
+            if not perche and not isinstance(risposta.dati, list):
+                perche = _("risposta senza l'elenco `items`")
+            if perche:
+                esito["interrotto"] = 1
+                note.append(_(
+                    "⚠️ lo scarico si e' interrotto alla pagina %(pagina)s: "
+                    "%(perche)s. Gli ordini letti fin qui si importano lo "
+                    "stesso; i restanti al prossimo giro.")
+                    % {"pagina": pagina, "perche": perche})
+                break
+            ordini.extend(risposta.dati)
+            if len(risposta.dati) < ORDINI_PER_PAGINA:
+                break
+        esito["lette"] = esito["ordini"] = len(ordini)
+
+        for grezzo in ordini:
+            numero = (_testo(grezzo.get("orderId"))
+                      if isinstance(grezzo, dict) else "")
+            try:
+                with self.env.cr.savepoint():
+                    self._importa_ordine(grezzo, esito, note)
+            except Exception as errore:  # noqa: BLE001
+                esito["in_errore"] += 1
+                _logger.exception("Cdiscount: ordine %s non importato",
+                                  numero or "?")
+                self._al_riparo(self._segna_ordine_in_errore, numero or "?",
+                                str(errore)[:2000])
+
+        verde = not (esito["in_errore"] or esito["interrotto"]
+                     or esito["in_attesa_accettazione"] or note)
+        pezzi = [_("Ordini letti %(lette)s: importati %(importati)s, gia' "
+                   "presenti %(gia_importati)s, in errore %(in_errore)s, "
+                   "saltati (nessuna riga da importare) %(saltati)s.")
+                 % esito]
+        pezzi.extend(note)
+        self._al_riparo(self._registra, "pull_orders",
+                        "success" if verde else "error", "\n".join(pezzi))
+        return esito
+
+    def _segna_ordine_in_errore(self, numero, messaggio):
+        """La riga di mappa in errore: e' il posto dove si va a guardare."""
+        Mappa = self.env["centrivo.order.map"].sudo()
+        mappa = Mappa.search([("channel_id", "=", self.channel.id),
+                              ("external_id", "=", numero)], limit=1)
+        valori = {"state": "error", "error_message": messaggio}
+        if mappa:
+            mappa.write(valori)
+        else:
+            Mappa.create(dict(valori, channel_id=self.channel.id,
+                              external_id=numero,
+                              company_id=self.channel.company_id.id))
+        self._registra("pull_orders", "error",
+                       _("Ordine %(numero)s: %(messaggio)s")
+                       % {"numero": numero, "messaggio": messaggio},
+                       external_id=numero)
+        return True
+
+    @staticmethod
+    def _data_iso(testo):
+        """Una data ISO 8601 di Octopia (`2026-09-04T00:00:00+00:00`) come
+        Datetime di Odoo, o False. Una data storta non ferma un ordine."""
+        if not testo:
+            return False
+        try:
+            pulito = str(testo).replace("Z", "")
+            if "+" in pulito:
+                pulito = pulito.split("+", 1)[0]
+            return fields.Datetime.to_datetime(pulito.replace("T", " ")[:19])
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _importa_ordine(self, grezzo, esito, note):
+        """Un ordine Cdiscount diventa un `sale.order`. Idempotente.
+
+        ⚠️ **Prodotto NON mappato → l'ordine va in errore, e si vede.** Non
+        si crea un prodotto da un ordine. ⚠️ Prodotto senza giacenza → entra
+        lo stesso: la merce che manca si guarda in magazzino.
+        """
+        numero = (_testo(grezzo.get("orderId"))
+                  if isinstance(grezzo, dict) else "") or "?"
+        try:
+            letto = leggi_ordine(grezzo)
+        except ValueError as errore:
+            esito["in_errore"] += 1
+            self._segna_ordine_in_errore(numero, str(errore))
+            return
+        numero = letto["numero"]
+        Mappa = self.env["centrivo.order.map"].sudo()
+        mappa = Mappa.search([("channel_id", "=", self.channel.id),
+                              ("external_id", "=", numero)], limit=1)
+        if mappa and mappa.state == "imported":
+            esito["gia_importati"] += 1
+            return
+        if not letto["righe"]:
+            esito["saltati"] += 1
+            note.append(_(
+                "ordine %(numero)s: nessuna riga da importare (%(perche)s).")
+                % {"numero": numero,
+                   "perche": "; ".join("%s: %s" % (e["id"], e["perche"])
+                                       for e in letto["escluse"])
+                   or _("nessuna riga")})
+            return
+
+        Prodotto = self.env["product.product"].sudo()
+        azienda = self.channel.company_id
+        mancanti, prodotti = [], {}
+        for riga in letto["righe"]:
+            prodotto = Prodotto.search(
+                [("default_code", "=", riga["codice"]),
+                 ("company_id", "in", [False, azienda.id])], limit=1)
+            if not prodotto and riga["gtin"]:
+                prodotto = Prodotto.search(
+                    [("barcode", "=", riga["gtin"]),
+                     ("company_id", "in", [False, azienda.id])], limit=1)
+            if not prodotto:
+                mancanti.append(riga["codice"])
+            else:
+                prodotti[riga["id"]] = prodotto
+        if mancanti:
+            esito["in_errore"] += 1
+            self._segna_ordine_in_errore(numero, _(
+                "Nessun prodotto in Odoo con codice %s: l'ordine non e' "
+                "stato importato. Il prodotto non si crea da un ordine — va "
+                "creato o corretto il codice, poi si ripete lo scarico.")
+                % ", ".join(sorted(set(mancanti))))
+            return
+
+        canale = self.channel.sudo()
+        cliente = self._cliente_cdiscount(letto)
+        consegna = cliente
+        if not letto["consegna_uguale"]:
+            consegna = self._indirizzo_consegna(cliente, letto["consegna"])
+        righe_ordine = [(0, 0, {
+            "product_id": prodotti[riga["id"]].id,
+            "product_uom_qty": riga["quantita"],
+            "price_unit": riga["prezzo"],
+        }) for riga in letto["righe"]]
+        spese = spedizione_righe(letto["righe"])
+        if spese > 0:
+            if canale.cdiscount_prodotto_spedizione:
+                righe_ordine.append((0, 0, {
+                    "product_id": canale.cdiscount_prodotto_spedizione.id,
+                    "product_uom_qty": 1,
+                    "price_unit": spese,
+                }))
+            else:
+                note.append(_(
+                    "⚠️ ordine %(numero)s: %(spese).2f € di spese di "
+                    "spedizione pagate dal cliente NON sono entrate "
+                    "nell'ordine: sul canale manca il «Prodotto spese di "
+                    "spedizione».") % {"numero": numero, "spese": spese})
+        if not canale.cdiscount_posizione_fiscale:
+            note.append(_(
+                "⚠️ ordine %s importato SENZA posizione fiscale: sul canale "
+                "manca la «Posizione fiscale (Francia)», e l'IVA applicata "
+                "potrebbe non essere quella francese.") % numero)
+        ordine = self.env["sale.order"].sudo().create({
+            "partner_id": cliente.id,
+            "partner_invoice_id": cliente.id,
+            "partner_shipping_id": consegna.id,
+            "company_id": azienda.id,
+            "team_id": self.channel.team_id.id or False,
+            "fiscal_position_id": canale.cdiscount_posizione_fiscale.id or False,
+            "client_order_ref": numero,
+            "origin": "Cdiscount %s" % numero,
+            "order_line": righe_ordine,
+        })
+        ordine.action_confirm()
+        self._controlla_totale_ordine(ordine, letto, note)
+        valori = {"state": "imported", "sale_order_id": ordine.id,
+                  "error_message": False}
+        if mappa:
+            mappa.write(valori)
+        else:
+            mappa = Mappa.create(dict(
+                valori, channel_id=self.channel.id, external_id=numero,
+                company_id=azienda.id))
+        self._registra_righe_ordine(mappa, ordine, letto, prodotti)
+        esito["importati"] += 1
+
+    def _controlla_totale_ordine(self, ordine, letto, note):
+        """Il totale in Odoo deve tornare con quello pagato dal cliente.
+
+        L'ordine resta: esiste, il cliente ha comprato. Ma la differenza va
+        nel registro, perche' un ordine che vale meno (o piu') di quel che il
+        cliente ha pagato e' un errore che si scopre in contabilita'.
+        """
+        atteso = letto["totale"]
+        if atteso is None:
+            atteso = totale_righe(letto["righe"])
+        trovato = ordine.amount_total
+        if abs(atteso - trovato) <= 0.01:
+            return True
+        testo = _(
+            "⚠️ Ordine %(numero)s importato, ma il totale NON torna: in Odoo "
+            "%(trovato).2f, su Cdiscount %(atteso).2f. I prezzi scritti sono "
+            "quelli pagati dal cliente, IVA INCLUSA: se in Odoo e' piu' alto, "
+            "l'aliquota della posizione fiscale non e' «IVA inclusa»; se e' "
+            "diverso in altro modo, o l'aliquota non e' quella francese, o "
+            "mancano le spese di spedizione.") % {
+                "numero": letto["numero"], "trovato": trovato, "atteso": atteso}
+        note.append(testo)
+        self._registra("pull_orders", "error", testo,
+                       external_id=letto["numero"])
+        return False
+
+    def _cliente_cdiscount(self, letto):
+        """Il `res.partner` del compratore, per riferimento Cdiscount.
+
+        ⚠️ Nella forma letta il cliente e' ANONIMO: ne' email ne' telefono.
+        L'aggancio e' il suo `customer.reference`, scritto in `ref`. Un
+        indirizzo che cambia da un ordine all'altro aggiorna il contatto.
+        """
+        Partner = self.env["res.partner"].sudo()
+        dati = letto["fatturazione"]
+        riferimento = ("CDISCOUNT:%s" % letto["cliente"]
+                       if letto["cliente"] else "")
+        esistente = Partner.browse()
+        if riferimento:
+            esistente = Partner.search(
+                [("ref", "=", riferimento),
+                 ("company_id", "in", [False, self.channel.company_id.id])],
+                limit=1)
+        valori = self._valori_indirizzo(dati)
+        valori["name"] = (dati["azienda"] or dati["nome"]
+                          or _("Cliente Cdiscount %s") % letto["numero"])
+        if dati["azienda"]:
+            valori["is_company"] = True
+        if riferimento:
+            valori["ref"] = riferimento
+        if esistente:
+            esistente.write({c: v for c, v in valori.items() if v})
+            return esistente
+        return Partner.create(valori)
+
+    def _indirizzo_consegna(self, cliente, dati):
+        """L'indirizzo di consegna, come contatto figlio del cliente."""
+        Partner = self.env["res.partner"].sudo()
+        valori = self._valori_indirizzo(dati)
+        esistente = Partner.search(
+            [("parent_id", "=", cliente.id), ("type", "=", "delivery"),
+             ("street", "=", valori["street"]), ("zip", "=", valori["zip"]),
+             ("city", "=", valori["city"])], limit=1)
+        if esistente:
+            return esistente
+        valori.update({"parent_id": cliente.id, "type": "delivery",
+                       "name": dati["nome"] or dati["azienda"] or cliente.name})
+        return Partner.create(valori)
+
+    def _valori_indirizzo(self, dati):
+        paese = self.env["res.country"].sudo().search(
+            [("code", "=", dati["paese"])], limit=1) if dati["paese"] else None
+        return {
+            "street": dati["via"] or False,
+            "street2": dati["via2"] or False,
+            "zip": dati["cap"] or False,
+            "city": dati["citta"] or False,
+            "country_id": paese.id if paese else False,
+        }
+
+    def _registra_righe_ordine(self, mappa, ordine, letto, prodotti):
+        """Una `cdiscount.riga.ordine` per ogni riga di Octopia."""
+        Riga = self.env["cdiscount.riga.ordine"].sudo()
+        per_prodotto = {}
+        for linea in ordine.order_line:
+            per_prodotto.setdefault(linea.product_id.id, linea)
+        for riga in letto["righe"]:
+            prodotto = prodotti.get(riga["id"])
+            linea = per_prodotto.get(prodotto.id) if prodotto else None
+            Riga.create({
+                "channel_id": self.channel.id,
+                "order_map_id": mappa.id,
+                "riga": riga["id"],
+                "ordine": letto["numero"],
+                "codice": riga["codice"],
+                "gtin": riga["gtin"] or False,
+                "sale_line_id": linea.id if linea else False,
+                "stato_cdiscount": riga["stato"] or False,
+                "quantita": riga["quantita"],
+                "prezzo": riga["prezzo"],
+                "spedizione": riga["spedizione"],
+                "commissione_con_iva": riga["commissione_con_iva"],
+                "commissione_senza_iva": riga["commissione_senza_iva"],
+                "tasso_commissione": riga["tasso_commissione"],
+                "promesso_entro": self._data_iso(riga["promesso_entro"]),
+                "spedire_entro": self._data_iso(riga["spedire_entro"]),
+            })
+
+    # ------------------------------------------------------------------
+    # La spedizione: UN collo per l'intero ordine
+    # ------------------------------------------------------------------
+    def _spedizione_ferma(self, esterno, motivo):
+        """Scrive perche' non si e' comunicato niente, e si ferma. Sempre False."""
+        self._registra("push_shipment", "error",
+                       _("Spedizione dell'ordine %(ordine)s non comunicata: "
+                         "%(motivo)s.") % {"ordine": esterno, "motivo": motivo},
+                       external_id=esterno)
+        return False
+
+    def _corriere_cdiscount(self, trasferimenti, esterno):
+        """`(codice, modello url)` del corriere per Cdiscount, o None dopo
+        aver detto perche'. Tutti i trasferimenti devono avere lo stesso
+        corriere: Cdiscount vuole UN collo per ordine."""
+        # Lazy: il banco fuori da Odoo non ha questo modulo del tronco.
+        from odoo.addons.integrations_core.connectors.carrier_resolver import (  # noqa: E501
+            NON_TRADOTTO)
+        codici = {}
+        for trasferimento in trasferimenti:
+            modello, id_sorgente, nome = (
+                self.channel._picking_carrier_source(trasferimento))
+            if not id_sorgente:
+                self._spedizione_ferma(
+                    esterno, _("il trasferimento %s non ha un vettore da cui "
+                               "ricavare il corriere") % trasferimento.name)
+                return None
+            esito = self.env["centrivo.carrier.map"].resolve_external_code(
+                self.channel, modello, id_sorgente, self.channel.company_id)
+            if not esito:
+                if esito.failure_reason == NON_TRADOTTO:
+                    self._spedizione_ferma(
+                        esterno,
+                        _("il corriere «%s» non ha un nome per Cdiscount "
+                          "(in Francia si spedisce solo con BRT e GLS). "
+                          "Guarda in Corrieri → Copertura corrieri, oppure "
+                          "aggiungi un'eccezione di canale.")
+                        % (esito.brand_name or "?"))
+                else:
+                    self._spedizione_ferma(
+                        esterno,
+                        _("il vettore «%s» non e' collegato a nessun corriere. "
+                          "Aggiungi la riga in Corrieri → Vettori.") % nome)
+                return None
+            codici[esito.external_code] = esito.tracking_url_template or ""
+        if len(codici) > 1:
+            self._spedizione_ferma(
+                esterno, _("i colli di questo ordine viaggiano con corrieri "
+                           "diversi (%s), e Cdiscount accetta UN collo per "
+                           "ordine") % ", ".join(sorted(codici)))
+            return None
+        return next(iter(codici.items()))
+
+    def push_shipment(self, order_map):
+        """Comunica a Cdiscount che l'ordine e' partito: UN collo, UNA chiamata.
+
+        ⚠️ Nessuna riga di questo metodo e' stata provata contro Cdiscount
+        vero: la forma e' LETTA (`docs/cdiscount-ordini-contratto.md` §4).
+        Per questo la spedizione nasce col CANCELLO CHIUSO: dall'automatismo
+        non parte niente, dal pulsante sull'ordine si'. Il cancello si apre
+        dalla scheda del canale dopo aver visto sul portale che il primo
+        invio e' andato.
+
+        ⚠️ L'esito incerto non e' un successo e non e' un fallimento: non si
+        segna (si perderebbe la spedizione) e non si ritenta da soli (un
+        collo dichiarato due volte e' un rifiuto o un doppione).
+        """
+        esterno = order_map.external_id
+        canale = self.channel.sudo()
+        if not (canale.cdiscount_spedizione_provata
+                or self.env.context.get("cdiscount_spedizione_a_mano")):
+            return self._spedizione_ferma(
+                esterno, _("il primo invio a Cdiscount si fa A MANO, dal "
+                           "pulsante sull'ordine. Quando sul portale l'ordine "
+                           "risultera' spedito, premi «Ho verificato sul "
+                           "portale» sulla scheda del canale, e da li' in poi "
+                           "ci pensera' anche l'automatismo"))
+        Riga = self.env["cdiscount.riga.ordine"].sudo()
+        righe = Riga.search([("order_map_id", "=", order_map.id)])
+        if order_map.state != "imported" or not order_map.sale_order_id:
+            return self._spedizione_ferma(
+                esterno, _("l'ordine non risulta importato, o non ha un "
+                           "ordine di vendita collegato"))
+        if not righe:
+            return self._spedizione_ferma(
+                esterno, _("non ci sono righe Cdiscount registrate per "
+                           "questo ordine"))
+        if all(righe.mapped("spedizione_comunicata")):
+            self._registra("push_shipment", "skip",
+                           _("Ordine %s: spedizione gia' comunicata.")
+                           % esterno, external_id=esterno)
+            if not order_map.shipment_pushed:
+                order_map.sudo().shipment_pushed = True
+            return True
+        trasferimenti = order_map.sale_order_id.picking_ids.filtered(
+            lambda p: p.state == "done"
+            and (p.carrier_tracking_ref or "").strip())
+        if not trasferimenti:
+            return self._spedizione_ferma(
+                esterno, _("nessuna spedizione pronta: serve un trasferimento "
+                           "in stato «Fatto» con il numero di tracciamento"))
+        numeri = list(dict.fromkeys(
+            (t.carrier_tracking_ref or "").strip() for t in trasferimenti))
+        if len(numeri) > 1:
+            return self._spedizione_ferma(
+                esterno, _("ci sono %s numeri di tracciamento diversi, e "
+                           "Cdiscount accetta UN collo per ordine")
+                % len(numeri))
+        corriere = self._corriere_cdiscount(trasferimenti, esterno)
+        if not corriere:
+            return False
+        codice, modello_url = corriere
+        etichetta = etichetta_corriere(codice)
+        if not etichetta:
+            return self._spedizione_ferma(
+                esterno, _("il codice corriere «%s» non e' fra i corrieri "
+                           "di Cdiscount") % codice)
+        try:
+            corpo = corpo_spedizione(numeri[0], etichetta,
+                                     url_tracciamento(modello_url, numeri[0]))
+        except ValueError as errore:
+            return self._spedizione_ferma(esterno, str(errore))
+
+        client = self._client()
+        risposta = client.chiama(
+            "POST", "/orders/%s/shipments" % quote(esterno, safe=""), corpo)
+        incerta = (self._causa_incerta(risposta)
+                   or self._quota_esaurita(risposta))
+        if incerta:
+            self._registra("push_shipment", "error", _(
+                "Ordine %(ordine)s: esito IGNOTO della spedizione "
+                "(%(perche)s). Cdiscount puo' averla presa lo stesso: NON si "
+                "ritenta da soli. Va guardato sul portale, e se risulta "
+                "spedito si segna a mano.") % {"ordine": esterno,
+                                               "perche": incerta},
+                str(corpo)[:MAX_PAYLOAD], esterno)
+            return False
+        if not risposta.ok:
+            self._registra("push_shipment", "error", _(
+                "Ordine %(ordine)s: Cdiscount ha rifiutato la spedizione "
+                "(%(motivo)s). Niente e' stato segnato: si corregge e si "
+                "ripete.") % {"ordine": esterno,
+                              "motivo": self._motivo_stato(
+                                  risposta.stato, risposta.messaggio)},
+                str(corpo)[:MAX_PAYLOAD], esterno)
+            return False
+        righe.write({"spedizione_comunicata": True})
+        order_map.sudo().shipment_pushed = True
+        self._registra("push_shipment", "success", _(
+            "Ordine %(ordine)s: spedizione comunicata a Cdiscount — collo "
+            "%(collo)s con %(corriere)s.") % {
+                "ordine": esterno, "collo": numeri[0],
+                "corriere": etichetta},
+            str(corpo)[:MAX_PAYLOAD], esterno)
         return True

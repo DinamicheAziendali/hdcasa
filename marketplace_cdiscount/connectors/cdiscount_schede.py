@@ -18,10 +18,12 @@ tagliare costa una scheda sbagliata in vetrina per mesi.
 schede: un ValueError che non dice QUALE riga e' inutile, e questa lezione e'
 gia' stata pagata su Kaufland (vedi `kaufland_offerte.corpo_offerta`).
 
-⚠️ I nomi dei campi seguono la documentazione «Product feature v2». Vanno
-riconfermati alla prima spedizione vera: la ricognizione del 2026-08-25 ha gia'
-trovato, per le offerte, un elenco di campi che sembrava JSON ed era lo schema
-XML.
+⚠️ I nomi dei campi seguono la documentazione «Product feature v2», riletta
+il 2026-09-02 dopo la sonda sul vero (`docs/cdiscount-misurato-2026-09-02.md`):
+`sellerProductReference`, `gtin`, `title`, `description`, `brand` (testo
+libero), `categoryCode`, `sellerPictureUrls`. La chiamata che scrive non si e'
+potuta misurare — non esiste un sandbox — quindi vanno riconfermati alla
+prima spedizione vera.
 
 Questo file NON importa Odoo: si prova con tools/test_cdiscount_schede.py.
 """
@@ -203,7 +205,13 @@ def corpo_scheda(codice, gtin, titolo, descrizione, immagini, categoria,
         "description": descrizione_pulita,
         "categoryCode": categoria_pulita,
         "brand": marca_pulita,
-        "images": indirizzi,
+        # ⚠️ LETTO sulla documentazione ufficiale il 2026-09-02: le immagini
+        # si chiamano `sellerPictureUrls` e portano l'indice esplicito, da 1.
+        # La prima versione spediva `images`, un nome che Octopia non
+        # conosce. L'ordine resta quello dato: l'indice 1 e' la copertina.
+        "sellerPictureUrls": [{"index": posizione, "url": uno}
+                              for posizione, uno in enumerate(indirizzi,
+                                                              start=1)],
     }
 
 

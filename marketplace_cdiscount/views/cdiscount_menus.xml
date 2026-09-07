@@ -54,7 +54,7 @@
             name="Pacchetti"
             parent="menu_cdiscount_root"
             action="action_cdiscount_pacchetto"
-            sequence="52"/>
+            sequence="53"/>
 
   <!-- ⚠️ E NEMMENO QUESTA. La procedura che carica il file dei contenuti
        esisteva dal Compito 8 — modello, vista, controlli, riquadro degli
@@ -65,5 +65,19 @@
             name="Contenuti"
             parent="menu_cdiscount_root"
             action="action_cdiscount_contenuti_wizard"
-            sequence="53"/>
+            sequence="54"/>
+  <!-- Le OFFERTE (Consegna 2) stanno fra le Schede e i Pacchetti: e' il
+       percorso vero — prima la scheda, poi l'offerta, poi cio' che si puo'
+       perdere. -->
+  <!-- Le RIGHE ORDINE (Consegna 3): dopo i Pacchetti, prima dei Contenuti. -->
+  <menuitem id="menu_cdiscount_riga_ordine"
+            name="Righe ordine"
+            parent="menu_cdiscount_root"
+            action="action_cdiscount_riga_ordine"
+            sequence="55"/>
+  <menuitem id="menu_cdiscount_offerta"
+            name="Offerte"
+            parent="menu_cdiscount_root"
+            action="action_cdiscount_offerta"
+            sequence="52"/>
 </odoo>

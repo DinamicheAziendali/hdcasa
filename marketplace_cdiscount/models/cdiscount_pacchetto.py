@@ -43,7 +43,9 @@ STATI_PACCHETTO = [
 # pacchetti di offerte, quelli non devono finire sotto
 # `GET /products-integration-reports`, che e' il rapporto delle SCHEDE.
 TIPO_SCHEDE = "schede"
-TIPI_PACCHETTO = [(TIPO_SCHEDE, "Schede prodotto")]
+TIPO_OFFERTE = "offerte"
+TIPI_PACCHETTO = [(TIPO_SCHEDE, "Schede prodotto"),
+                  (TIPO_OFFERTE, "Offerte (prezzo e giacenza)")]
 
 # ⚠️ QUANTO PRIMA SI AVVISA UNA PERSONA, e perche' dodici ore e non tre
 # giorni. L'avviso non serve a dire «e' partito qualcosa» — quello lo dice il
@@ -154,6 +156,17 @@ class CdiscountPacchetto(models.Model):
     # scriverla e poi vedere fallire la creazione dell'attivita' vorrebbe dire
     # che quel pacchetto non avvisera' MAI PIU', e nessuno se ne accorgerebbe
     # — la bandiera direbbe che l'avviso c'e' stato.
+    # ⚠️ Solo per i pacchetti di OFFERTE (Consegna 2): il ciclo ha un passo
+    # in piu', `PATCH {"state": "Ready"}`, senza il quale Cdiscount non lo
+    # lavora mai. Se quel passo fallisce il pacchetto resta scritto con
+    # questa bandiera spenta, e il raccoglitore ritenta il PATCH prima di
+    # chiedere l'esito. Per le schede nasce acceso: non c'e' niente da
+    # ritentare.
+    pronto = fields.Boolean(
+        string="Mandato in lavorazione", default=True, copy=False,
+        help="Per un pacchetto di offerte: vero quando Cdiscount ha "
+             "ricevuto il «Ready». Spento, il raccoglitore lo ritenta.")
+
     avvisato_scadenza = fields.Boolean(
         string="Scadenza gia' avvisata", default=False, copy=False,
         help="Vero quando l'attività «il pacchetto sta per scadere» è già "

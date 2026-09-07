@@ -4,4 +4,7 @@
 from . import cdiscount_channel
 from . import cdiscount_pacchetto
 from . import cdiscount_scheda
+from . import cdiscount_offerta
+from . import cdiscount_riga_ordine
+from . import product_template
 from . import cdiscount_contenuti_wizard

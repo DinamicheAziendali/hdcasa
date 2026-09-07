@@ -73,8 +73,11 @@ INTERFACCE_DA_CHIEDERE = (
     "bg.logistics.warehouse.list.get",
     "bg.local.goods.priceorder.query",
     "temu.local.goods.sku.stock.query",
-    "temu.pay.tax.get.galerie.signature",
-    "temu.pay.tax.merchant.upload.invoice",
+    # ⚠️ Le due `temu.pay.tax.*` (firma e caricamento della fattura) sono state
+    # TOLTE il 2026-09-01: le fatture su Temu non si gestiscono, deciso da
+    # Angelo il 2026-08-27, e il codice che le mandava e' stato rimosso.
+    # Chiedere un permesso per una cosa che non si fa allunga la domanda e la
+    # rende meno credibile — e la domanda a Temu si fa UNA VOLTA SOLA.
 )
 
 # Dove sta la pratica: le prove fatte, la risposta di Temu al ticket e il testo

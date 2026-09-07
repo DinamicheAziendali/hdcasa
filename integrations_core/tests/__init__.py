@@ -6,3 +6,4 @@ from . import test_cosa_usa_il_canale
 from . import test_isolamento_altri_giri
 from . import test_presa_in_carico
 from . import test_isolamento_canali
+from . import test_collegamento_vettore_a_mano

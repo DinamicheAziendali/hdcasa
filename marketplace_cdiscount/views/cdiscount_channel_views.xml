@@ -36,7 +36,7 @@
               <field name="cdiscount_gettone_scade"/>
               <field name="cdiscount_gettone_scade_il"/>
             </group>
-            <group string="Dove nascono le schede">
+            <group string="Il collegamento a Octopia">
               <field name="cdiscount_canale_vendita"/>
               <!-- ⚠️ QUESTO CAMPO NON SI TOGLIE DA QUI. Sulla piattaforma
                    esterna la colonna esisteva, la migrazione l'aveva creata
@@ -48,60 +48,82 @@
                    Vedi il commento sul campo in
                    models/cdiscount_channel.py. -->
               <field name="cdiscount_categoria"/>
-              <!-- I DUE BOTTONI CHE SCRIVONO SU UN CATALOGO PUBBLICO.
+              <!-- La raccolta degli esiti. ⚠️ RESTA anche dopo che l'invio
+                   delle schede è sparito: gli stessi pacchetti portano le
+                   OFFERTE, e questo è il bottone con cui se ne guarda
+                   l'esito senza aspettare il giro automatico.
 
-                   ⚠️ `groups=` qui NASCONDE, non impedisce: un metodo di
-                   modello resta raggiungibile via RPC da qualunque utente
-                   interno, e `centrivo.channel` è in scrittura a
-                   `base.group_user`. La porta vera è l'`AccessError` dentro
-                   i metodi (`models/cdiscount_channel.py`,
-                   `_cdiscount_solo_amministratori`). I due vanno insieme.
+                   ⚠️ Il `groups=` qui NASCONDE, l'`AccessError` nel metodo
+                   IMPEDISCE: vanno insieme.
 
-                   ⚠️ E stanno sotto la categoria apposta: è il campo che
-                   decide in quale ramo del catalogo nascono le schede, e
-                   chi sta per schiacciare deve averlo appena letto. -->
-              <!-- ⚠️ Il `confirm=` c'è anche qui, e non è pignoleria: questo
-                   è IL PRIMO BOTTONE CHE VERRÀ PREMUTO, sul canale con la
-                   categoria appena compilata. Scrive su un catalogo pubblico
-                   e non si annulla come l'altro.
-
-                   ⚠️ Il `confirm=` è una stringa STATICA: Odoo non vi
-                   interpola i campi, quindi non può mostrare QUALE categoria
-                   sia scritta sul canale — può solo dire di guardarla. La
-                   categoria vera compare nella notifica e nel registro, cioè
-                   DOPO l'invio. -->
-              <button name="action_cdiscount_manda_una" type="object"
-                      string="Manda UNA scheda"
-                      groups="base.group_system"
-                      confirm="Questo crea UNA scheda su un catalogo pubblico, sul serio, e non si annulla. Prima di procedere: guarda il campo «Categoria Cdiscount (livello 3)» qui accanto ed è quella in cui la scheda nascerà. L'esito torna in modo asincrono e scade in tre giorni."
-                      help="Manda una sola scheda a Cdiscount. È così che si fa la prima prova sul vero: si guarda sul portale che sia nata giusta, e solo dopo si manda il resto."/>
-              <button name="action_cdiscount_manda_schede" type="object"
-                      string="Manda le schede pronte"
-                      groups="base.group_system"
-                      confirm="Questo crea schede su un catalogo pubblico, sul serio, e non si annulla. L'esito torna in modo asincrono e scade in tre giorni. Controlla che la categoria sia quella giusta, di LIVELLO 3. Procedere?"
-                      help="Manda a Cdiscount le schede che hanno titolo, descrizione e immagini e non sono già partite, a pacchetti da 10.000. Un giro alla volta: se ne restano, il messaggio lo dice e si ripete."/>
-              <!-- ⚠️ IL GEMELLO DI «MANDA UNA SCHEDA», e senza di lui il
-                   giro era CHIUSO. Tutta la metà raccoglitore era
-                   raggiungibile solo dal cron; il cron nasce spento, e la
-                   lista di controllo dice di accenderlo «solo quando una
-                   raccolta vera è andata pulita». Per accendere il cron
-                   serviva una raccolta pulita, per avere una raccolta pulita
-                   serviva il cron: l'unica uscita era Impostazioni →
-                   Tecnico → Azioni pianificate → Esegui manualmente, che non
-                   è roba per chi non è programmatore.
-
-                   ⚠️ Stessa guardia degli altri due, e vanno insieme: il
-                   `groups=` qui NASCONDE, l'`AccessError` nel metodo
-                   IMPEDISCE.
-
-                   ⚠️ E NIENTE `confirm=`, ed è una scelta: questo bottone
-                   non scrive niente su Cdiscount, legge e basta. Un confirm
-                   su un gesto senza conseguenze là fuori insegna a cliccare
-                   via i confirm, e i due che contano stanno qui sopra. -->
+                   ⚠️ E niente `confirm=`: legge e basta. -->
               <button name="action_cdiscount_raccogli_adesso" type="object"
                       string="Raccogli gli esiti adesso"
                       groups="base.group_system"
                       help="Va a riprendere subito l'esito dei pacchetti aperti, senza aspettare il giro automatico. È così che si guarda la prima raccolta vera: l'esito di un pacchetto scade in tre giorni, e il cron va acceso solo dopo che una raccolta è andata pulita."/>
+            </group>
+          </group>
+          <!-- IL RIAGGANCIO. È il primo gesto di ogni giro: le offerte
+               nascono dalle schede agganciate, e una scheda che il riaggancio
+               non ha visto non esiste per il modulo.
+
+               ⚠️ NIENTE `confirm=`: questo bottone legge e basta. I confirm
+               stanno sui gesti che scrivono su Cdiscount. -->
+          <group string="Il riaggancio (cosa esiste già su Cdiscount)"
+                 name="cdiscount_riaggancio">
+            <div colspan="2">
+              <button name="action_cdiscount_riaggancia" type="object"
+                      string="Riaggancia le schede"
+                      groups="base.group_system"
+                      class="btn-secondary"
+                      help="Legge da Cdiscount i prodotti che possiamo vendere e li accoppia ai prodotti di Odoo per riferimento interno. Non scrive niente su Cdiscount. Va premuto prima di qualunque offerta, e ogni volta che sul portale nascono prodotti nuovi."/>
+            </div>
+          </group>
+          <!-- LE OFFERTE (Consegna 2). I due dati che bloccavano — l'éco-
+               participation e il costo di spedizione — stanno qui e sul
+               prodotto: finche' mancano, le righe si SALTANO e lo dicono. -->
+          <group string="Le offerte (prezzo, giacenza, éco-participation)"
+                 name="cdiscount_offerte">
+            <group>
+              <field name="cdiscount_iva"/>
+              <field name="cdiscount_ecotax_obbligatoria"/>
+              <field name="cdiscount_modo_consegna"/>
+              <field name="cdiscount_spedizione_costo"/>
+              <field name="cdiscount_spedizione_costo_aggiuntivo"/>
+            </group>
+            <group>
+              <button name="action_cdiscount_allinea_una" type="object"
+                      string="Allinea UNA offerta"
+                      groups="base.group_system"
+                      class="btn-secondary"
+                      confirm="Manda UNA offerta a Cdiscount (prezzo, giacenza, éco-participation, spese). Va poi guardata sul portale. Procedere?"/>
+              <button name="action_cdiscount_allinea_offerte" type="object"
+                      string="Allinea le offerte"
+                      groups="base.group_system"
+                      class="btn-primary"
+                      confirm="Manda a Cdiscount tutte le offerte cambiate, a pacchetti da 100. Scrive prezzi su un marketplace vero. Procedere?"/>
+            </group>
+          </group>
+          <!-- GLI ORDINI (Consegna 3). Il cancello della spedizione e'
+               quello di Kaufland: chiuso, si spedisce solo a mano. -->
+          <group string="Gli ordini" name="cdiscount_ordini">
+            <group>
+              <field name="cdiscount_posizione_fiscale"/>
+              <field name="cdiscount_prodotto_spedizione"/>
+            </group>
+            <group>
+              <field name="cdiscount_spedizione_provata" readonly="1"/>
+              <field name="cdiscount_spedizione_provata_il" readonly="1"
+                     invisible="not cdiscount_spedizione_provata"/>
+              <button name="action_cdiscount_apri_cancello_spedizione" type="object"
+                      string="Ho verificato sul portale: attiva l'automatismo"
+                      class="btn-primary" groups="base.group_system"
+                      invisible="cdiscount_spedizione_provata"
+                      confirm="Confermi di aver visto SUL PORTALE Cdiscount che l'ordine risulta spedito? Da qui in poi le spedizioni partiranno anche in automatico."/>
+              <button name="action_cdiscount_chiudi_cancello_spedizione" type="object"
+                      string="Torna al solo invio a mano"
+                      groups="base.group_system"
+                      invisible="not cdiscount_spedizione_provata"/>
             </group>
           </group>
         </page>

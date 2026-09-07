@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Copyright 2026 Angelo Margarella (www.hdcasa.it)
+    License OPL-1 (Odoo Proprietary License v1.0). See LICENSE file for full terms.
+
+    Le RIGHE degli ordini Cdiscount (Consegna 3): cosa ha detto Octopia di
+    ogni riga, commissione compresa, e se la spedizione e' stata comunicata.
+-->
+<odoo>
+  <record id="view_cdiscount_riga_ordine_list" model="ir.ui.view">
+    <field name="name">cdiscount.riga.ordine.list</field>
+    <field name="model">cdiscount.riga.ordine</field>
+    <field name="arch" type="xml">
+      <list string="Righe ordine Cdiscount" create="0">
+        <field name="channel_id"/>
+        <field name="ordine"/>
+        <field name="riga"/>
+        <field name="order_map_id"/>
+        <field name="codice"/>
+        <field name="quantita"/>
+        <field name="prezzo"/>
+        <field name="spedizione"/>
+        <field name="commissione_senza_iva"/>
+        <field name="tasso_commissione" optional="hide"/>
+        <field name="stato_cdiscount"/>
+        <field name="spedire_entro"/>
+        <field name="spedizione_comunicata" groups="base.group_system"/>
+        <field name="sale_line_id" optional="hide"/>
+        <field name="gtin" optional="hide"/>
+      </list>
+    </field>
+  </record>
+
+  <record id="view_cdiscount_riga_ordine_search" model="ir.ui.view">
+    <field name="name">cdiscount.riga.ordine.search</field>
+    <field name="model">cdiscount.riga.ordine</field>
+    <field name="arch" type="xml">
+      <search>
+        <field name="ordine"/>
+        <field name="codice"/>
+        <field name="order_map_id"/>
+        <filter name="da_spedire" string="Spedizione da comunicare"
+                domain="[('spedizione_comunicata', '=', False)]"/>
+        <filter name="spedite" string="Spedizione comunicata"
+                domain="[('spedizione_comunicata', '=', True)]"/>
+        <group expand="0" string="Raggruppa">
+          <filter name="per_ordine" string="Ordine"
+                  context="{'group_by': 'ordine'}"/>
+        </group>
+      </search>
+    </field>
+  </record>
+
+  <record id="action_cdiscount_riga_ordine" model="ir.actions.act_window">
+    <field name="name">Righe ordine Cdiscount</field>
+    <field name="res_model">cdiscount.riga.ordine</field>
+    <field name="view_mode">list</field>
+    <field name="search_view_id" ref="view_cdiscount_riga_ordine_search"/>
+    <field name="help" type="html">
+      <p class="o_view_nocontent_smiling_face">Nessun ordine Cdiscount ancora</p>
+      <p>Le righe nascono con lo scarico degli ordini («Scarica ordini» sul
+         canale, o l'automatismo del tronco). Gli ordini stessi sono negli
+         «Ordini importati».</p>
+    </field>
+  </record>
+</odoo>

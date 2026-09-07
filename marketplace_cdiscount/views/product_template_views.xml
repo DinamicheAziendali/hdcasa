@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Copyright 2026 Angelo Margarella (www.hdcasa.it)
+    License OPL-1 (Odoo Proprietary License v1.0). See LICENSE file for full terms.
+
+    L'éco-participation Cdiscount sul prodotto. Sta nella pagina
+    «Informazioni generali» del modulo `product`, che c'e' sempre: la pagina
+    «Vendite» arriva col modulo `sale`, che questo modulo non pretende.
+-->
+<odoo>
+  <record id="view_product_template_form_cdiscount" model="ir.ui.view">
+    <field name="name">product.template.form.cdiscount</field>
+    <field name="model">product.template</field>
+    <field name="inherit_id" ref="product.product_template_only_form_view"/>
+    <field name="arch" type="xml">
+      <xpath expr="//page[@name='general_information']" position="inside">
+        <group string="Cdiscount" name="cdiscount">
+          <field name="cdiscount_ecotax"/>
+        </group>
+      </xpath>
+    </field>
+  </record>
+</odoo>

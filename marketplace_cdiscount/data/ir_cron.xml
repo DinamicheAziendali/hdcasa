@@ -69,4 +69,19 @@
          Si accende da Impostazioni → Tecnico → Azioni pianificate. -->
     <field name="active" eval="False"/>
   </record>
+
+  <!-- CONSEGNA 2: l'allineamento delle OFFERTE. Nasce SPENTO come tutti i
+       cron dei connettori: la prima scrittura di prezzi su un marketplace
+       vero e' un gesto guardato (i due bottoni sul canale). Si accende dopo
+       la prima offerta vista sul portale. -->
+  <record id="cron_cdiscount_allinea_offerte" model="ir.cron">
+    <field name="name">Cdiscount: allinea le offerte (prezzo e giacenza)</field>
+    <field name="model_id" ref="integrations_core.model_centrivo_channel"/>
+    <field name="state">code</field>
+    <field name="code">model.cron_cdiscount_allinea_offerte_tutti()</field>
+    <field name="interval_number">2</field>
+    <field name="interval_type">hours</field>
+    <field name="user_id" ref="base.user_root"/>
+    <field name="active" eval="False"/>
+  </record>
 </odoo>

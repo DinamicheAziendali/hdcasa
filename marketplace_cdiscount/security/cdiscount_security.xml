@@ -61,4 +61,20 @@
     <field name="global" eval="True"/>
     <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
   </record>
+
+  <!-- Le OFFERTE (Consegna 2), stessa regola: un «seleziona tutto» sulla
+       pagina delle offerte manda prezzi su un marketplace vero. -->
+  <record id="cdiscount_riga_ordine_company_rule" model="ir.rule">
+    <field name="name">cdiscount.riga.ordine multi-company</field>
+    <field name="model_id" ref="model_cdiscount_riga_ordine"/>
+    <field name="global" eval="True"/>
+    <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+  </record>
+
+  <record id="cdiscount_offerta_company_rule" model="ir.rule">
+    <field name="name">cdiscount.offerta multi-company</field>
+    <field name="model_id" ref="model_cdiscount_offerta"/>
+    <field name="global" eval="True"/>
+    <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+  </record>
 </odoo>

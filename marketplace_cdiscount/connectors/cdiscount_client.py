@@ -180,10 +180,16 @@ class RispostaCdiscount:
     bandiera non c'e' modo di distinguerle guardando la risposta.
     """
 
-    def __init__(self, stato, corpo, testo, prevolo=False):
+    def __init__(self, stato, corpo, testo, prevolo=False, teste=None):
         self.stato = _stato_intero(stato)
         self.corpo = corpo
         self.testo = testo or ""
+        # ⚠️ Le intestazioni della risposta, dal 2026-09-02: `POST
+        # /offer-packages` risponde SENZA corpo e col numero del pacchetto in
+        # `Content-Location`, e gli esiti delle offerte si paginano con
+        # `Link`. Sempre un dizionario, anche a rete caduta: chi legge fa
+        # `.teste.get(...)` senza guardie.
+        self.teste = dict(teste) if isinstance(teste, dict) else {}
         # ⚠️ Vero SOLO quando il guasto e' avvenuto prima di toccare la rete.
         # Un trasporto che rende 0 (rete caduta, tempo scaduto) NON lo alza:
         # la' la richiesta puo' essere partita davvero.
@@ -205,16 +211,22 @@ class RispostaCdiscount:
         righe, in silenzio. Chi vuole leggere il corpo di un rifiuto usa
         `.corpo`, che resta a disposizione.
 
-        Andata bene: Octopia incarta gli elenchi in `data`, mentre le
-        risposte a oggetto singolo — per esempio il numero di pacchetto di
-        `POST /products-integration` — arrivano nude. Percio' si prende
-        `data` quando la chiave c'e', e altrimenti il corpo stesso.
+        Andata bene: **MISURATO il 2026-09-02** sull'account vero, Octopia
+        incarta gli elenchi in `items` — `{"itemsPerPage": n, "items":
+        [...]}` su prodotti, offerte, pacchetti, rapporti, categorie e
+        marche; `{"count": n, "items": [...]}` sugli endpoint del venditore —
+        mentre le risposte a oggetto singolo (il numero di pacchetto di
+        `POST /products-integration`, il dettaglio di una categoria) arrivano
+        nude. La chiave `data`, che la prima versione di questo file
+        prendeva per l'incarto, **non compare mai**: era una supposizione
+        della documentazione. Percio' si prende `items` quando c'e' ED E' UN
+        ELENCO, e altrimenti il corpo stesso.
         """
         if not self.ok:
             return None
         if isinstance(self.corpo, dict):
-            if "data" in self.corpo:
-                return self.corpo["data"]
+            if isinstance(self.corpo.get("items"), list):
+                return self.corpo["items"]
             return self.corpo
         if isinstance(self.corpo, list):
             return self.corpo
@@ -380,7 +392,7 @@ class CdiscountClient:
             # Il tipo di contenuto si dichiara solo quando un contenuto c'e',
             # come fa Kaufland.
             teste["Content-Type"] = "application/json"
-        stato, testo, _teste_risposta = self._trasporto.chiama(
+        stato, testo, teste_risposta = self._trasporto.chiama(
             metodo, uri, teste, byte)
         try:
             spacchettato = json.loads(testo) if testo else None
@@ -389,4 +401,5 @@ class CdiscountClient:
             # pagina d'errore di un proxy, e il testo grezzo resta a
             # disposizione di `messaggio`.
             spacchettato = None
-        return RispostaCdiscount(stato, spacchettato, testo)
+        return RispostaCdiscount(stato, spacchettato, testo,
+                                 teste=teste_risposta)

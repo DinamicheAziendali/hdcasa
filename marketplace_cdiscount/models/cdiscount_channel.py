@@ -3,14 +3,21 @@
 # License OPL-1 (Odoo Proprietary License v1.0). See LICENSE file for full terms.
 """Cio' che un canale Cdiscount deve sapere per parlare con Octopia.
 
-Cinque cose configurate a mano (le due credenziali OAuth2, il codice
-venditore, il canale di vendita e la categoria) e due che si scrive da solo
-(il gettone e la sua scadenza).
+Le cose configurate a mano (le due credenziali OAuth2, il codice venditore,
+il canale di vendita, il listino e i dati delle offerte) e due che si scrive
+da solo (il gettone e la sua scadenza).
 
-E i due bottoni che mandano le schede. ⚠️ Il lavoro vero non e' qui: sta nel
-connettore (`connectors/cdiscount.py`, `manda_schede`). Qui c'e' solo cio' che
-un bottone deve avere e che un connettore non puo' avere — il permesso e la
-notifica.
+⚠️ **Questo modulo NON crea schede su Cdiscount, e non e' una mancanza: e'
+una scelta** (2026-09-02). Il catalogo Octopia e' condiviso — una scheda per
+GTIN — e le schede si creano dal portale, dove la categoria sta su ogni riga
+e si vede cosa esiste gia'. Il modulo **aggancia** cio' che c'e'
+(«Riaggancia le schede») e gestisce quel che e' davvero nostro: le offerte e
+gli ordini. Un modulo che non puo' creare inserzioni non puo' crearne di
+sbagliate.
+
+E i bottoni. ⚠️ Il lavoro vero non e' qui: sta nel connettore
+(`connectors/cdiscount.py`). Qui c'e' solo cio' che un bottone deve avere e
+che un connettore non puo' avere — il permesso e la notifica.
 """
 import logging
 from datetime import datetime
@@ -126,6 +133,62 @@ class CentrivoChannel(models.Model):
     # ------------------------------------------------------------------
     # Il gettone. Se lo scrive il connettore, non una persona.
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # CONSEGNA 2 — le offerte. I due dati che bloccavano (éco-participation e
+    # costo di spedizione) diventano campi; finche' mancano, le righe si
+    # saltano e lo dicono. Nessun `groups=`: e' configurazione operativa.
+    # ------------------------------------------------------------------
+    cdiscount_iva = fields.Float(
+        string="IVA delle offerte (%)", default=20.0, digits=(5, 2),
+        help="L'aliquota dichiarata in ogni offerta (`taxes[].VAT`). La "
+             "Francia e' al 20%. Octopia la vuole dichiarata da noi.")
+    cdiscount_ecotax_obbligatoria = fields.Boolean(
+        string="Pretendi l'éco-participation", default=True,
+        help="Acceso: un prodotto con éco-participation a zero NON parte, "
+             "la riga viene saltata e lo dice. Si spegne solo quando il "
+             "consulente conferma che per quei prodotti lo zero e' giusto.")
+    cdiscount_modo_consegna = fields.Char(
+        string="Modo di consegna", default="TRK",
+        help="Il codice del modo di consegna dell'account (misurato il "
+             "2026-09-02: TRK = Envoi Suivi, REG = Recommandé). Si verifica "
+             "su Cdiscount prima di ogni invio: un codice che l'account non "
+             "ha ferma tutto. ⚠️ Nessuno dei due regge oltre i 30 kg: quei "
+             "prodotti si saltano finche' non si attiva un modo «Big parcel».")
+    cdiscount_spedizione_costo = fields.Float(
+        string="Costo di spedizione (€)", digits=(16, 2), default=0.0,
+        help="Quanto paga il cliente francese per la spedizione, per "
+             "offerta (`deliveryModes[].cost`). Zero = spedizione gratuita. "
+             "E' una decisione commerciale, non un campo tecnico.")
+    cdiscount_spedizione_costo_aggiuntivo = fields.Float(
+        string="Costo per pezzo aggiuntivo (€)", digits=(16, 2), default=0.0,
+        help="Il costo di spedizione per ogni pezzo oltre il primo "
+             "(`deliveryModes[].additionalCost`).")
+
+    # ------------------------------------------------------------------
+    # CONSEGNA 3 — gli ordini. La posizione fiscale (Francia, IVA inclusa) e
+    # il prodotto delle spese di spedizione sono configurazione; il cancello
+    # della spedizione e' la stessa disciplina di Kaufland.
+    # ------------------------------------------------------------------
+    cdiscount_posizione_fiscale = fields.Many2one(
+        "account.fiscal.position", string="Posizione fiscale (Francia)",
+        help="Applicata a ogni ordine importato. I prezzi arrivano IVA "
+             "inclusa: l'aliquota francese dev'essere configurata «IVA "
+             "inclusa», o il totale non torna e il registro lo dice.")
+    cdiscount_prodotto_spedizione = fields.Many2one(
+        "product.product", string="Prodotto spese di spedizione",
+        domain="[('type', '=', 'service')]",
+        help="La riga con cui le spese di spedizione pagate dal cliente "
+             "entrano nell'ordine. Senza, le spese restano fuori e il "
+             "registro lo dice.")
+    cdiscount_spedizione_provata = fields.Boolean(
+        string="Spedizione verificata sul portale", default=False, copy=False,
+        groups="base.group_system",
+        help="Finche' e' spento, la spedizione Cdiscount parte SOLO a mano, "
+             "dal pulsante sull'ordine. Si accende dopo aver visto sul "
+             "portale che il primo invio e' risultato spedito.")
+    cdiscount_spedizione_provata_il = fields.Datetime(
+        string="Verificata il", copy=False, groups="base.group_system")
+
     cdiscount_gettone = fields.Char(
         string="Gettone Cdiscount", readonly=True, copy=False,
         groups="base.group_system",
@@ -277,36 +340,7 @@ class CentrivoChannel(models.Model):
             },
         }
 
-    def action_cdiscount_manda_una(self):
-        """Manda UNA scheda sola. È la prima prova sul catalogo vero.
 
-        ⚠️ Sta PRIMA dell'altro bottone apposta, e non è una gentilezza: la
-        prima spedizione vera va guardata sul portale Cdiscount prima di
-        mandare il resto. I nomi dei campi di una scheda vengono dalla
-        documentazione e non sono mai stati confermati sul vero, e un
-        pacchetto sbagliato da 604 schede si scopre tre giorni dopo — una
-        scheda sbagliata si scopre subito e non sporca niente.
-        """
-        self.ensure_one()
-        self._cdiscount_solo_amministratori(_("Manda UNA scheda a Cdiscount"))
-        esito = self._get_connector().manda_schede(limite=1)
-        return self._cdiscount_notifica(_("Cdiscount — una scheda"), esito)
-
-    def action_cdiscount_manda_schede(self):
-        """Manda a Cdiscount tutte le schede pronte, a pacchetti.
-
-        ⚠️ Le guardie — credenziali, canale di vendita, **categoria**, e
-        almeno una riga con contenuti — stanno nel connettore, non qui: le
-        deve avere anche chi arriva da un'altra strada (il cron della
-        Consegna 2, una chiamata da riga di comando). Qui c'è solo il
-        permesso, che invece è del bottone.
-        """
-        self.ensure_one()
-        self._cdiscount_solo_amministratori(
-            _("Manda le schede a Cdiscount"))
-        esito = self._get_connector().manda_schede()
-        return self._cdiscount_notifica(_("Cdiscount — invio delle schede"),
-                                        esito)
 
     def _cdiscount_notifica_raccolta(self, titolo, esito):
         """La notifica del bottone «Raccogli gli esiti adesso».
@@ -369,6 +403,181 @@ class CentrivoChannel(models.Model):
                 "sticky": parziale,
             },
         }
+
+    def action_cdiscount_riaggancia(self):
+        """Legge da Cdiscount i prodotti gia' vendibili e li aggancia ai nostri.
+
+        ⚠️ Non scrive niente su Cdiscount: e' il gemello di «Riaggancia» di
+        Kaufland. Per questo non ha `confirm=` sulla vista — i confirm stanno
+        sui gesti che toccano il marketplace, e metterli anche qui insegna a
+        cliccarli via.
+
+        ⚠️ **Va premuto PRIMA di qualunque offerta**, e ogni volta che sul
+        portale nascono prodotti nuovi: le offerte nascono dalle schede
+        agganciate, e una scheda che il riaggancio non ha visto non esiste
+        per il modulo.
+        """
+        self.ensure_one()
+        self._cdiscount_solo_amministratori(_("Riaggancia le schede Cdiscount"))
+        esito = self._get_connector().riaggancia()
+        return self._cdiscount_notifica_riaggancio(
+            _("Cdiscount — riaggancio delle schede"), esito)
+
+    def _cdiscount_notifica_riaggancio(self, titolo, esito):
+        """La notifica del riaggancio.
+
+        ⚠️ **Zero agganciate NON e' verde**, nemmeno con zero errori: e' il
+        modo in cui questo giro puo' mentire — se Octopia rinominasse
+        `sellerProductReference`, ogni riga cadrebbe negli scarti e il conto
+        tornerebbe lo stesso. Un riaggancio che non aggancia niente e' una
+        notizia, e va guardato.
+        """
+        agganciate = esito.get("agganciate", 0)
+        parziale = bool(not agganciate or esito.get("senza_prodotto")
+                        or esito.get("contese") or esito.get("scartate"))
+        messaggio = (
+            "Righe lette da Cdiscount: %(lette)s. Agganciate ai nostri "
+            "prodotti: %(agganciate)s. Senza un prodotto in Odoo: "
+            "%(senza)s. Non vendibili da noi: %(nonvend)s. Contese fra due "
+            "codici: %(contese)s. Scartate perché senza riferimento "
+            "venditore: %(scartate)s."
+        ) % {"lette": esito.get("lette", 0), "agganciate": agganciate,
+             "senza": esito.get("senza_prodotto", 0),
+             "nonvend": esito.get("non_vendibili", 0),
+             "contese": esito.get("contese", 0),
+             "scartate": esito.get("scartate", 0)}
+        if esito.get("senza"):
+            messaggio += (" ⚠️ In vendita su Cdiscount ma senza prodotto in "
+                          "Odoo: %s." % ", ".join(esito["senza"]))
+        if esito.get("contese_dette"):
+            messaggio += (" ⚠️ Codici che si contendono lo stesso prodotto: "
+                          "%s." % ", ".join(esito["contese_dette"]))
+        if not agganciate and esito.get("lette"):
+            messaggio += (" ⚠️ Ha letto righe ma non ne ha agganciata "
+                          "NESSUNA: controlla che i riferimenti venditore su "
+                          "Cdiscount corrispondano ai riferimenti interni dei "
+                          "prodotti in Odoo.")
+        messaggio += " Il dettaglio è nel registro delle operazioni."
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "title": titolo,
+                "message": messaggio,
+                "type": "warning" if parziale else "success",
+                "sticky": parziale,
+            },
+        }
+
+    def _cdiscount_notifica_offerte(self, titolo, esito):
+        """La notifica dei due bottoni delle offerte: niente verde su un
+        lavoro parziale, e la regola sta in un punto solo."""
+        parziale = bool(esito.get("incerte") or esito.get("rifiutate")
+                        or esito.get("saltate") or esito.get("non_partite")
+                        or esito.get("fermata")
+                        or esito.get("chiusura_fallita"))
+        messaggio = (
+            "Mandate %(mandate)s offerte (di cui %(ritiri)s ritiri) in "
+            "%(pacchetti)s pacchetti, col modo di consegna %(modo)s. "
+            "Invariate: %(invariate)s. Saltate: %(saltate)s. In pacchetti "
+            "rifiutati: %(rifiutate)s. Di esito ignoto: %(incerte)s. Non "
+            "partite: %(non_partite)s."
+        ) % {"mandate": esito.get("mandate", 0),
+             "ritiri": esito.get("ritiri", 0),
+             "pacchetti": esito.get("pacchetti", 0),
+             "modo": esito.get("modo") or "?",
+             "invariate": esito.get("invariate", 0),
+             "saltate": esito.get("saltate", 0),
+             "rifiutate": esito.get("rifiutate", 0),
+             "incerte": esito.get("incerte", 0),
+             "non_partite": esito.get("non_partite", 0)}
+        if esito.get("fermata"):
+            messaggio += " ⚠️ %s" % esito["fermata"]
+        if esito.get("chiusura_fallita"):
+            messaggio += (" ⚠️ La chiusura del giro è fallita: i pacchetti "
+                          "partiti restano partiti, ma i conti non sono nel "
+                          "registro. Guarda il registro di sistema.")
+        if esito.get("incerte"):
+            messaggio += (" ⚠️ Le offerte di esito ignoto restano «in "
+                          "attesa»: il raccoglitore leggerà l'esito del "
+                          "pacchetto. NON rimandare niente prima.")
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "title": titolo,
+                "message": messaggio,
+                "type": "warning" if parziale else "success",
+                "sticky": parziale,
+            },
+        }
+
+    def action_cdiscount_apri_cancello_spedizione(self):
+        """Apre il cancello: da qui la spedizione Cdiscount rientra
+        nell'automatismo. Si preme DOPO aver visto sul portale che il primo
+        invio risulta spedito."""
+        for canale in self.filtered(lambda c: c.connector_code == "cdiscount"):
+            canale.sudo().write({
+                "cdiscount_spedizione_provata": True,
+                "cdiscount_spedizione_provata_il": fields.Datetime.now(),
+            })
+        return True
+
+    def action_cdiscount_chiudi_cancello_spedizione(self):
+        for canale in self.filtered(lambda c: c.connector_code == "cdiscount"):
+            canale.sudo().cdiscount_spedizione_provata = False
+        return True
+
+    def action_cdiscount_allinea_una(self):
+        """Manda UNA offerta. È la prima prova di prezzo sul marketplace vero.
+
+        ⚠️ Il corpo di un'offerta è LETTO sulla documentazione, non misurato
+        (non c'è un sandbox): la prima va guardata sul portale — prezzo, IVA,
+        éco-participation, spese — prima di mandare il resto.
+        """
+        self.ensure_one()
+        self._cdiscount_solo_amministratori(_("Allinea UNA offerta"))
+        esito = self._get_connector().allinea_offerte(limite=1)
+        return self._cdiscount_notifica_offerte(
+            _("Cdiscount — una offerta"), esito)
+
+    def action_cdiscount_allinea_offerte(self):
+        """Manda a Cdiscount tutte le offerte cambiate, a pacchetti."""
+        self.ensure_one()
+        self._cdiscount_solo_amministratori(_("Allinea le offerte"))
+        esito = self._get_connector().allinea_offerte()
+        return self._cdiscount_notifica_offerte(
+            _("Cdiscount — allineamento delle offerte"), esito)
+
+    @api.model
+    def cron_cdiscount_allinea_offerte_tutti(self):
+        """L'allineamento delle offerte su tutti i canali Cdiscount attivi.
+
+        ⚠️ Nasce spento (`data/ir_cron.xml`). Stesse regole della raccolta:
+        un canale che esplode non ferma gli altri, e un turno occupato e' uno
+        `skip`, non un errore.
+        """
+        canali = self.search([("connector_code", "=", "cdiscount"),
+                              ("active", "=", True)])
+        nomi = {canale.id: canale.display_name for canale in canali}
+        for canale in canali:
+            nome = nomi[canale.id]
+            try:
+                with self.env.cr.savepoint():
+                    if not canale._cdiscount_turno_libero():
+                        self._cdiscount_registra(canale, nome, "skip", _(
+                            "Allineamento offerte saltato: un altro giro è "
+                            "già in corso su questo canale."))
+                        continue
+                    canale._get_connector().allinea_offerte()
+            except Exception as errore:  # noqa: BLE001
+                _logger.exception(
+                    "Allineamento offerte Cdiscount fallito su %s", nome)
+                self._cdiscount_registra(
+                    canale, nome, "error",
+                    _("L'allineamento delle offerte si è interrotto: %s")
+                    % errore)
+        return True
 
     def action_cdiscount_raccogli_adesso(self):
         """Va a riprendere gli esiti ADESSO, senza aspettare il cron.

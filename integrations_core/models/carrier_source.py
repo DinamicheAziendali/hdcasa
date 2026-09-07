@@ -116,7 +116,17 @@ class CentrivoCarrierSource(models.Model):
                 record.source_record_key = False
 
     def _inverse_source_record_key(self):
-        """Dalla scelta in tendina alle tre chiavi durevoli."""
+        """Dalla scelta in tendina alle tre chiavi durevoli.
+
+        Le tre chiavi si scrivono con UNA sola write, non con tre assegnazioni
+        separate. In Odoo ogni assegnazione su un record già salvato è una
+        write() a sé, e ogni write() rivaluta i vincoli del modello: scrivendo
+        prima `source_model` da solo, `_check_source` trovava `source_res_id`
+        ancora vuoto e bocciava una riga che sarebbe stata completa la riga
+        dopo. Era il caso di chi collega un vettore NUOVO dalla schermata
+        «Vettori» — l'unica strada che ha un cliente — e si sentiva chiedere
+        proprio il vettore che aveva appena scelto in tendina.
+        """
         model = self._get_source_model()
         for record in self:
             if not record.source_record_key:
@@ -128,9 +138,11 @@ class CentrivoCarrierSource(models.Model):
             source = self.env[model].sudo().browse(res_id).exists()
             if not source:
                 continue
-            record.source_model = model
-            record.source_res_id = res_id
-            record.source_display = source.display_name or ("#%s" % res_id)
+            record.write({
+                "source_model": model,
+                "source_res_id": res_id,
+                "source_display": source.display_name or ("#%s" % res_id),
+            })
 
     @api.model
     def resolve_brand(self, source_model, source_res_id, company):

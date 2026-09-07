@@ -39,7 +39,8 @@ from odoo.exceptions import AccessError
 # stringa che divergono per una lettera farebbero fallire la scrittura sulla
 # Selection — oppure, peggio, passerebbero e lascerebbero un valore che
 # nessun filtro intercetta.
-from ..connectors.cdiscount_rapporto import RIFIUTATO, RIUSCITO
+from ..connectors.cdiscount_rapporto import (
+    CREAZIONE, IDENTICA, MODIFICA, RIFIUTATO, RIUSCITO)
 
 # ⚠️ Il separatore con cui gli indirizzi delle immagini stanno in UN SOLO
 # campo si prende da dove nascono — la colonna «immagini» del file dei
@@ -379,6 +380,52 @@ class CdiscountScheda(models.Model):
     controllato_il = fields.Datetime(
         string="Controllato il", copy=False,
         help="Quando l'esito di questa scheda e' stato letto l'ultima volta.")
+
+    # ⚠️ La risposta a «esisteva gia'?», che Cdiscount da' SOLO nel rapporto,
+    # dopo aver mandato (misurato il 2026-09-02: non esiste una ricerca nel
+    # catalogo prima di spedire). Senza questa colonna andrebbe persa col
+    # rapporto, che scade in tre giorni.
+    operazione = fields.Selection(
+        [(CREAZIONE, "Nata da noi"),
+         (MODIFICA, "Esisteva: arricchita da noi"),
+         (IDENTICA, "Esisteva gia' uguale")],
+        string="Su Cdiscount", copy=False,
+        help="Cosa Cdiscount ha fatto della scheda: creata da zero, "
+             "arricchita perche' esisteva, o lasciata com'era perche' era "
+             "identica. Vuota finche' il rapporto non arriva.")
+
+    # ------------------------------------------------------------------
+    # IL REGISTRO D'AGGANCIO — cosa esiste DAVVERO su Cdiscount.
+    #
+    # ⚠️ Questi tre campi li scrive il RIAGGANCIO (`riaggancia()`), che legge
+    # `GET /products` e non manda niente. Sono la differenza fra «crediamo
+    # che questa scheda esista» e «Cdiscount ci ha detto che esiste»: la
+    # prima e' un'ipotesi, la seconda e' cio' che autorizza a fare un'offerta.
+    #
+    # ⚠️ Perche' servono. Il catalogo Octopia e' CONDIVISO — «a single product
+    # sheet per GTIN» — e le schede si creano dal portale, non da qui. Il
+    # primo caricamento vero (2026-09-02) ha trovato **76 prodotti su 176 gia'
+    # vendibili** senza che avessimo mandato niente, e 88 righe sono tornate
+    # con «non sei il creatore della scheda». Un modulo che offre senza
+    # sapere cosa esiste duplica le offerte su un marketplace vero.
+    # ------------------------------------------------------------------
+    riferimento_octopia = fields.Char(
+        string="Riferimento Octopia", index=True, copy=False, readonly=True,
+        help="Il codice della scheda nel catalogo condiviso Octopia (forma "
+             "«AUC…»). Lo scrive il riaggancio leggendo da Cdiscount: e' la "
+             "prova che la scheda esiste davvero, non che noi crediamo che "
+             "esista.")
+
+    vendibile = fields.Boolean(
+        string="Si puo' vendere", copy=False, readonly=True,
+        help="Cdiscount dice che possiamo mettere un'offerta su questo "
+             "prodotto. Una scheda che esiste ma non e' vendibile da noi non "
+             "deve riceverne una.")
+
+    agganciata_il = fields.Datetime(
+        string="Agganciata il", copy=False, readonly=True,
+        help="Quando il riaggancio l'ha vista su Cdiscount l'ultima volta. "
+             "Vuota vuol dire che nessun riaggancio l'ha mai confermata.")
 
     company_id = fields.Many2one(
         "res.company", string="Azienda",
