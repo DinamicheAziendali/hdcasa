@@ -26,6 +26,13 @@ Cosa e' MISURATO e cosa e' LETTO:
   `sellerProductReference`, `productReference`, `permissions` e
   `isMarketable`, e che `pageIndex`/`pageSize` siano **deprecati** su questo
   endpoint.
+- **MISURATO il 2026-09-10** (sonda in sola lettura sull'account vero): il
+  corpo della risposta ha **solo `items` e `itemsPerPage`**. Una chiave
+  `cursor` nel corpo **non esiste**: il cursore della pagina successiva
+  arriva nell'intestazione **`Link`**, `rel="next"`, come per gli esiti delle
+  offerte. Fino a quel giorno lo si cercava nel corpo, e il riaggancio si
+  fermava alla PRIMA pagina — «lette 100» su 118 prodotti veri, senza un
+  errore né un avviso.
 - **MISURATO** (rapporti di integrazione del 2026-09-02): che il riferimento
   di catalogo abbia la forma `AUC<gtin>`, e che la colonna «Je peux vendre»
   del rapporto corrisponda a un prodotto che possiamo offrire.
@@ -34,8 +41,21 @@ Cosa e' MISURATO e cosa e' LETTO:
 diverse e non si copia la seconda sulla prima: `pageIndex` qui non farebbe
 errore, andrebbe semplicemente ignorato, e si riceverebbe sempre la stessa
 pagina — cioe' un riaggancio che gira per sempre sui primi cento prodotti.
+
+⚠️ **E il cursore sta nell'intestazione `Link`, non nel corpo.** E' lo stesso
+guasto visto dall'altro lato: cercarlo dove non c'e' non da' errore, da' un
+elenco che si chiude troppo presto. Il 2026-09-10 sono stati 100 prodotti
+letti su 118, e la differenza si vedeva solo contando.
 """
 from urllib.parse import quote
+
+# ⚠️ Si riusa il lettore del `Link` gia' scritto e gia' provato per gli esiti
+# delle offerte invece di riscriverne un secondo: la convenzione di
+# paginazione e' una sola per tutta l'API di Octopia, e due copie divergono.
+try:  # dentro Odoo
+    from .cdiscount_offerte import cursore_da_link
+except ImportError:  # nei banchi di tools/, senza pacchetto
+    from cdiscount_offerte import cursore_da_link
 
 # Quanti prodotti per pagina. ⚠️ Il parametro si chiama `limit`, non
 # `pageSize`: vedi l'avvertenza in testa al file.
@@ -111,7 +131,10 @@ def pagine_prodotti(client, limite=PRODOTTI_PER_PAGINA):
         righe = corpo.get("items") or []
         if righe:
             yield righe
-        cursore = corpo.get("cursor")
+        # ⚠️ Dalle INTESTAZIONI, non dal corpo: vedi la nota MISURATO in testa
+        # al file. Cercarlo nel corpo vuol dire non trovarlo mai, e quindi
+        # dichiarare finito un elenco che finito non e'.
+        cursore = cursore_da_link(getattr(risposta, "teste", None))
         if not cursore:
             return
     raise LetturaInterrotta(messaggio=(

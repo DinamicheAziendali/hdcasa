@@ -29,6 +29,7 @@ Il giro è LETTO sulla documentazione Octopia («Retrieve seller Products»):
 import json
 import re
 from unittest.mock import patch
+from urllib.parse import quote
 
 from odoo.exceptions import UserError
 from odoo.tests.common import TransactionCase, tagged
@@ -64,8 +65,21 @@ class Trasporto(object):
 
 
 def pagina(righe, cursore=None):
+    """Una pagina di `GET /products` come arriva DAVVERO.
+
+    ⚠️ MISURATO il 2026-09-10 sull'account vero: il corpo porta solo `items`
+    e `itemsPerPage`, e il cursore della pagina dopo sta nell'intestazione
+    `Link`, `rel="next"`. Prima queste prove mettevano il cursore nel CORPO —
+    una forma che non esiste — e cosi' passavano su un connettore che in
+    produzione leggeva solo i primi 100 prodotti.
+    """
+    teste = {}
+    if cursore:
+        teste["link"] = ('</products?limit=100&fields=*>; rel="first",'
+                         '</products?cursor=%s&limit=100&fields=*>; '
+                         'rel="next"' % quote(cursore, safe=""))
     return ("GET", r"^/products\?", (200, {"items": righe,
-                                           "cursor": cursore}, {}))
+                                           "itemsPerPage": len(righe)}, teste))
 
 
 # ⚠️ LA FORMA VERA di una riga di `GET /products` (schema ufficiale, e il
@@ -167,6 +181,38 @@ class TestRiaggancio(TransactionCase):
         self.assertEqual(2, esito["agganciate"])
         self.assertEqual(2, len(trasporto.chiamate))
         self.assertIn("cursor=AAA", trasporto.chiamate[1][1])
+
+    def test_una_pagina_piena_non_e_l_ultima(self):
+        """⚠️ Il difetto del 2026-09-10: «lette 100» su 118 prodotti veri.
+
+        Il cursore si cercava nel corpo, dove non c'è mai stato. Una pagina
+        che arriva piena fino al limite sembrava la fine dell'elenco, e il
+        riaggancio dichiarava un catalogo dimezzato senza un errore né un
+        avviso. Qui la prima pagina è piena e il `Link` dice che ne segue
+        un'altra: se non la si segue, il secondo prodotto non si aggancia.
+        """
+        self._prodotto("ZZRIAG-101")
+        self._prodotto("ZZRIAG-102")
+        esito, trasporto = self._riaggancia([
+            pagina([prodotto_cdiscount("ZZRIAG-101", "AUC0000000000101")],
+                   cursore="SEGUE"),
+            pagina([prodotto_cdiscount("ZZRIAG-102", "AUC0000000000102")]),
+        ])
+        self.assertEqual(2, esito["lette"], "esito intero: %r" % esito)
+        self.assertEqual(2, esito["agganciate"], "esito intero: %r" % esito)
+
+    def test_un_cursore_nel_corpo_non_conta_piu(self):
+        """⚠️ Il contrario del difetto: se il corpo tornasse a contare, il
+        giro seguirebbe un cursore che Cdiscount non ha mai mandato."""
+        self._prodotto("ZZRIAG-103")
+        esito, trasporto = self._riaggancia([
+            ("GET", r"^/products\?",
+             (200, {"items": [prodotto_cdiscount("ZZRIAG-103",
+                                                 "AUC0000000000103")],
+                    "cursor": "FANTASMA"}, {})),
+        ])
+        self.assertEqual(1, esito["agganciate"], "esito intero: %r" % esito)
+        self.assertEqual(1, len(trasporto.chiamate))
 
     def test_prodotto_che_in_odoo_non_esiste(self):
         """Roba in vendita su Cdiscount che non sappiamo di vendere."""

@@ -7,7 +7,7 @@
 # gli ORDINI — scarico degli InPreparation e spedizione a un collo.
 {
     "name": "Marketplace - Cdiscount",
-    "version": "18.0.5.0.0",
+    "version": "18.0.5.0.1",
     "license": "OPL-1",
     "category": "Connector",
     "summary": "Connettore Cdiscount (Octopia): invio delle schede prodotto "
